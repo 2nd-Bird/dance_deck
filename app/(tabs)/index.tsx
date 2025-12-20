@@ -1,12 +1,13 @@
 import AddVideoModal from '@/components/AddVideoModal';
 import VideoGrid from '@/components/VideoGrid';
+import { filterVideosByTags, sortVideosByRecency, TagSearchMode } from '@/services/library';
 import { addVideo, getVideos } from '@/services/storage';
 import { VideoItem } from '@/types';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, SafeAreaView, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, SafeAreaView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 export default function HomeScreen() {
   const [videos, setVideos] = useState<VideoItem[]>([]);
@@ -14,14 +15,14 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchMode, setSearchMode] = useState<TagSearchMode>('and');
 
   const loadData = async () => {
     setLoading(true);
     const data = await getVideos();
-    // Sort by createdAt desc
-    data.sort((a, b) => b.createdAt - a.createdAt);
-    setVideos(data);
-    setFilteredVideos(data);
+    const sorted = sortVideosByRecency(data);
+    setVideos(sorted);
+    setFilteredVideos(sorted);
     setLoading(false);
   };
 
@@ -32,18 +33,8 @@ export default function HomeScreen() {
   );
 
   useEffect(() => {
-    if (searchQuery.trim() === '') {
-      setFilteredVideos(videos);
-    } else {
-      const lowerQuery = searchQuery.toLowerCase();
-      const filtered = videos.filter(v =>
-        (v.title && v.title.toLowerCase().includes(lowerQuery)) ||
-        (v.memo && v.memo.toLowerCase().includes(lowerQuery)) ||
-        (v.tags && v.tags.some(t => t.toLowerCase().includes(lowerQuery)))
-      );
-      setFilteredVideos(filtered);
-    }
-  }, [searchQuery, videos]);
+    setFilteredVideos(filterVideosByTags(videos, searchQuery, searchMode));
+  }, [searchQuery, videos, searchMode]);
 
   const handleAddVideo = async (video: VideoItem) => {
     await addVideo(video);
@@ -63,11 +54,29 @@ export default function HomeScreen() {
         <MaterialCommunityIcons name="magnify" size={20} color="#666" style={styles.searchIcon} />
         <TextInput
           style={styles.searchInput}
-          placeholder="Search tags, titles..."
+          placeholder="Search tags..."
           value={searchQuery}
           onChangeText={setSearchQuery}
           clearButtonMode="while-editing"
         />
+        <View style={styles.searchModeToggle}>
+          <Pressable
+            style={[styles.searchModeButton, searchMode === 'and' && styles.searchModeButtonActive]}
+            onPress={() => setSearchMode('and')}
+          >
+            <Text style={[styles.searchModeText, searchMode === 'and' && styles.searchModeTextActive]}>
+              AND
+            </Text>
+          </Pressable>
+          <Pressable
+            style={[styles.searchModeButton, searchMode === 'or' && styles.searchModeButtonActive]}
+            onPress={() => setSearchMode('or')}
+          >
+            <Text style={[styles.searchModeText, searchMode === 'or' && styles.searchModeTextActive]}>
+              OR
+            </Text>
+          </Pressable>
+        </View>
       </View>
 
       {loading ? (
@@ -111,6 +120,31 @@ const styles = StyleSheet.create({
     flex: 1,
     height: '100%',
     fontSize: 16,
+  },
+  searchModeToggle: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  searchModeButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#ccc',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchModeButtonActive: {
+    backgroundColor: '#000',
+    borderColor: '#000',
+  },
+  searchModeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#444',
+  },
+  searchModeTextActive: {
+    color: '#fff',
   },
   loader: {
     marginTop: 50,

@@ -1,15 +1,15 @@
 import TapTempoButton from "@/components/TapTempoButton";
 import { getVideos, updateVideo } from "@/services/storage";
-import { VideoItem } from "@/types";
+import { LoopBookmark, VideoItem } from "@/types";
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import Slider from '@react-native-community/slider';
 import { AVPlaybackStatus, ResizeMode, Video } from "expo-av";
-import * as FileSystem from 'expo-file-system';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, View } from "react-native";
+import uuid from 'react-native-uuid';
 
 export default function VideoPlayerScreen() {
     const { id } = useLocalSearchParams();
@@ -31,9 +31,13 @@ export default function VideoPlayerScreen() {
     // Orientation State
     const [orientation, setOrientation] = useState(ScreenOrientation.Orientation.PORTRAIT_UP);
 
-    // A-B Loop State
-    const [loopA, setLoopA] = useState<number | null>(null);
-    const [loopB, setLoopB] = useState<number | null>(null);
+    // Loop & Beat State
+    const [bpm, setBpm] = useState(120);
+    const [phaseMillis, setPhaseMillis] = useState(0);
+    const [loopLengthBeats, setLoopLengthBeats] = useState(8);
+    const [loopStartMillis, setLoopStartMillis] = useState(0);
+    const [loopEnabled, setLoopEnabled] = useState(true);
+    const [loopBookmarks, setLoopBookmarks] = useState<LoopBookmark[]>([]);
 
     // Metadata State (Notes)
     const [memo, setMemo] = useState("");
@@ -71,6 +75,11 @@ export default function VideoPlayerScreen() {
             setMemo(found.memo || "");
             setTitle(found.title || "");
             setTags(found.tags || []);
+            setBpm(Math.max(20, found.bpm || 120));
+            setPhaseMillis(found.phaseMillis || 0);
+            setLoopLengthBeats(found.loopLengthBeats || 8);
+            setLoopStartMillis(found.loopStartMillis || 0);
+            setLoopBookmarks(found.loopBookmarks || []);
         } else {
             Alert.alert("Error", "Video not found");
             router.back();
@@ -84,16 +93,47 @@ export default function VideoPlayerScreen() {
         if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
 
         saveTimeoutRef.current = setTimeout(async () => {
-            if (memo !== videoItem.memo || title !== videoItem.title || tags !== videoItem.tags) {
-                const updated = { ...videoItem, memo, title, tags };
-                await updateVideo(updated);
-            }
+            const updated = {
+                ...videoItem,
+                memo,
+                title,
+                tags,
+                bpm,
+                phaseMillis,
+                loopLengthBeats,
+                loopStartMillis,
+                loopBookmarks,
+                updatedAt: Date.now(),
+            };
+            await updateVideo(updated);
+            setVideoItem(updated);
         }, 1000);
 
         return () => {
             if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
         };
-    }, [memo, title, tags]);
+    }, [memo, title, tags, bpm, phaseMillis, loopLengthBeats, loopStartMillis, loopBookmarks]);
+
+    const LOOP_EPSILON_MS = 50;
+    const getBeatDuration = () => 60000 / bpm;
+    const getLoopDuration = () => getBeatDuration() * loopLengthBeats;
+
+    const clampLoopStart = (value: number) => {
+        const loopDuration = getLoopDuration();
+        const maxStart = Math.max(0, durationMillis - loopDuration);
+        return Math.min(Math.max(value, 0), maxStart);
+    };
+
+    const snapLoopStart = (value: number) => {
+        const beat = getBeatDuration();
+        const beatsFromPhase = Math.round((value - phaseMillis) / beat);
+        const snapped = phaseMillis + beatsFromPhase * beat;
+        return clampLoopStart(snapped);
+    };
+
+    useEffect(() => {
+        setLoopStartMillis((current) => clampLoopStart(current));
+    }, [durationMillis, bpm, loopLengthBeats, phaseMillis]);
 
 
     const onPlaybackStatusUpdate = (status: AVPlaybackStatus) => {
@@ -103,10 +143,10 @@ export default function VideoPlayerScreen() {
         setDurationMillis(status.durationMillis || 0);
         setIsPlaying(status.isPlaying);
 
-        // A-B Loop Logic
-        if (loopA !== null && loopB !== null && status.positionMillis >= loopB) {
-            // seek to A
-            videoRef.current?.setPositionAsync(loopA);
+        const loopDuration = getLoopDuration();
+        const loopEnd = loopStartMillis + loopDuration;
+        if (loopEnabled && loopDuration > 0 && status.positionMillis >= loopEnd - LOOP_EPSILON_MS) {
+            videoRef.current?.setPositionAsync(loopStartMillis);
         }
     };
 
@@ -135,77 +175,52 @@ export default function VideoPlayerScreen() {
         setControlsVisible(!controlsVisible);
     };
 
-    // Smart Loop
-    const handleSetSmartLoop = (bpm: number, lengthInCounts: number) => {
-        if (!status?.isLoaded) return;
-
-        const secondsPerBeat = 60 / bpm;
-        const lengthInSeconds = secondsPerBeat * lengthInCounts;
-        const lengthInMillis = lengthInSeconds * 1000;
-
-        const start = positionMillis;
-        const end = start + lengthInMillis;
-
-        // Check if end is within duration
-        if (end > (status.durationMillis || 0)) {
-            Alert.alert("Loop Error", "Loop segment exceeds video duration.");
-            return;
-        }
-
-        setLoopA(start);
-        setLoopB(end);
-        videoRef.current?.playAsync();
-        setControlsVisible(true);
+    const handleTapTempo = (nextBpm: number) => {
+        setBpm(Math.max(20, nextBpm));
     };
 
-    // Download Logic
-    const handleDownload = async () => {
-        if (!videoItem) return;
+    const adjustBpm = (delta: number) => {
+        setBpm((current) => Math.max(20, current + delta));
+    };
 
-        // 1. Check if direct link (generic)
-        let downloadUrl = videoItem.uri;
+    const handleSetPhase = () => {
+        setPhaseMillis(positionMillis);
+    };
 
-        // Basic resolver for TikTok (Demo purpose, unofficial)
-        if (videoItem.sourceType === 'tiktok' && videoItem.uri.includes('tiktok.com')) {
-            // Try to use a known public API if simple enough, else just try the URL
-            // e.g. https://www.tikwm.com/api/?url=...
-            // For stability in this demo, we will try to download the original URL.
-            // However, TikTok web urls are HTML. We will skip complex resolving and show alert.
-        } else if (videoItem.sourceType === 'youtube') {
-            Alert.alert("Unsupported", "YouTube direct download is blocked by TOS. Please use a local video or direct MP4 link.");
+    const handleLoopStartChange = (value: number) => {
+        setLoopStartMillis(snapLoopStart(value));
+    };
+
+    const handleSaveBookmark = () => {
+        if (!durationMillis) {
+            Alert.alert("Bookmark Error", "Video duration is not available yet.");
+            return;
+        }
+        const loopDuration = getLoopDuration();
+        if (loopStartMillis + loopDuration > durationMillis) {
+            Alert.alert("Bookmark Error", "Loop window exceeds video duration.");
             return;
         }
 
-        Alert.alert("Downloading...", "Starting download in background.");
+        const bookmark: LoopBookmark = {
+            id: uuid.v4() as string,
+            bpm,
+            phaseMillis,
+            loopLengthBeats,
+            loopStartMillis,
+            createdAt: Date.now(),
+        };
+        setLoopBookmarks((current) => [bookmark, ...current]);
+    };
 
-        try {
-            const filename = `${videoItem.id}.mp4`;
-            // Explicitly cast or handle
-            const docDir = FileSystem.documentDirectory;
-            if (!docDir) throw new Error("No document directory");
-            const fileUri = `${docDir}${filename}`;
-
-            const downloadResumable = FileSystem.createDownloadResumable(
-                downloadUrl,
-                fileUri
-            );
-
-            const result = await downloadResumable.downloadAsync();
-
-            if (result && result.uri) {
-                const updated = {
-                    ...videoItem,
-                    uri: result.uri,
-                    sourceType: 'local' as const
-                };
-                await updateVideo(updated);
-                setVideoItem(updated);
-                Alert.alert("Success", "Video downloaded to local storage!");
-            }
-        } catch (e) {
-            console.error(e);
-            Alert.alert("Download Failed", "Could not download the video. Ensure it is a direct link.");
-        }
+    const applyBookmark = (bookmark: LoopBookmark) => {
+        setBpm(bookmark.bpm);
+        setPhaseMillis(bookmark.phaseMillis);
+        setLoopLengthBeats(bookmark.loopLengthBeats);
+        setLoopStartMillis(bookmark.loopStartMillis);
+        setLoopEnabled(true);
+        videoRef.current?.setPositionAsync(bookmark.loopStartMillis);
+        videoRef.current?.playAsync();
     };
 
     // Tag Management
@@ -230,11 +245,13 @@ export default function VideoPlayerScreen() {
         );
     }
 
-    const isLocal = videoItem.sourceType === 'local';
-    // If sourceType is local OR generic url ending in mp4
-    const canPlayNative = isLocal || videoItem.uri.includes('.mp4') || videoItem.uri.includes('.mov');
+    const canPlayNative = videoItem.uri.startsWith('file://')
+        || videoItem.uri.includes('.mp4')
+        || videoItem.uri.includes('.mov');
 
     const isLandscape = orientation === ScreenOrientation.Orientation.LANDSCAPE_LEFT || orientation === ScreenOrientation.Orientation.LANDSCAPE_RIGHT;
+    const loopDurationMillis = getLoopDuration();
+    const loopEndMillis = loopStartMillis + loopDurationMillis;
 
     return (
         <View style={styles.container}>
@@ -251,17 +268,16 @@ export default function VideoPlayerScreen() {
                             source={{ uri: videoItem.uri }}
                             useNativeControls={false}
                             resizeMode={ResizeMode.CONTAIN}
-                            isLooping={loopA === null}
+                            isLooping={false}
                             onPlaybackStatusUpdate={onPlaybackStatusUpdate}
                             rate={rate}
                             shouldCorrectPitch
                         />
                     ) : (
-                        // Placeholder for Webview/YouTube
+                        // Placeholder for unsupported format
                         <View style={styles.webPlaceholder}>
-                            <MaterialCommunityIcons name="web" size={64} color="#666" />
-                            <Text style={{ color: '#999' }}>Streaming (No Practice Tools)</Text>
-                            <Text style={{ color: '#666', fontSize: 10, marginTop: 5 }}>Download to enable features</Text>
+                            <MaterialCommunityIcons name="video-off" size={64} color="#666" />
+                            <Text style={{ color: '#999' }}>Unsupported video format</Text>
                         </View>
                     )}
 
@@ -272,15 +288,13 @@ export default function VideoPlayerScreen() {
                                 colors={['rgba(0,0,0,0.7)', 'transparent', 'rgba(0,0,0,0.7)']}
                                 style={styles.overlayGradient}
                             >
-                                {/* Top Row: Back & Title & Download */}
+                                {/* Top Row: Back & Title */}
                                 <View style={styles.topControlRow}>
                                     <Pressable onPress={() => router.back()} style={styles.iconBtn}>
                                         <MaterialCommunityIcons name="chevron-down" size={32} color="white" />
                                     </Pressable>
                                     <Text style={styles.overlayTitle} numberOfLines={1}>{title || "Untitled"}</Text>
-                                    <Pressable onPress={handleDownload} style={styles.iconBtn}>
-                                        <MaterialCommunityIcons name={isLocal ? "check-circle" : "download"} size={24} color={isLocal ? "#4CD964" : "white"} />
-                                    </Pressable>
+                                    <View style={styles.iconBtn} />
                                 </View>
 
                                 {/* Middle Row: Play/Pause */}
@@ -318,7 +332,7 @@ export default function VideoPlayerScreen() {
                                     {/* Toolbar */}
                                     <View style={styles.toolbar}>
                                         {/* Speed */}
-                                        <Pressable style={styles.toolItem} onPress={() => { const rates = [0.5, 0.75, 1.0]; const idx = rates.indexOf(rate); setRate(rates[(idx + 1) % 3]); }}>
+                                        <Pressable style={styles.toolItem} onPress={() => { const rates = [0.25, 0.5, 0.75, 1.0]; const idx = rates.indexOf(rate); setRate(rates[(idx + 1) % 4]); }}>
                                             <MaterialCommunityIcons name="speedometer" size={24} color={rate !== 1.0 ? "#FF0000" : "white"} />
                                             <Text style={styles.toolText}>{rate}x</Text>
                                         </Pressable>
@@ -329,19 +343,15 @@ export default function VideoPlayerScreen() {
                                             <Text style={styles.toolText}>Mirror</Text>
                                         </Pressable>
 
-                                        {/* A-B Loop (Manual) */}
-                                        <Pressable style={styles.toolItem} onPress={() => {
-                                            if (loopA === null) setLoopA(positionMillis);
-                                            else if (loopB === null) setLoopB(positionMillis);
-                                            else { setLoopA(null); setLoopB(null); }
-                                        }}>
-                                            <MaterialCommunityIcons name={loopA !== null ? (loopB !== null ? "repeat-once" : "map-marker-path") : "repeat"} size={24} color={(loopA !== null || loopB !== null) ? "#FF0000" : "white"} />
-                                            <Text style={styles.toolText}>{loopA !== null ? (loopB !== null ? "On" : "Set B") : "Loop"}</Text>
+                                        {/* Loop Toggle */}
+                                        <Pressable style={styles.toolItem} onPress={() => setLoopEnabled(!loopEnabled)}>
+                                            <MaterialCommunityIcons name={loopEnabled ? "repeat" : "repeat-off"} size={24} color={loopEnabled ? "#FF0000" : "white"} />
+                                            <Text style={styles.toolText}>Loop</Text>
                                         </Pressable>
 
-                                        {/* Smart Loop */}
+                                        {/* Tap Tempo */}
                                         <View style={styles.toolItem}>
-                                            <TapTempoButton onSetLoop={handleSetSmartLoop} />
+                                            <TapTempoButton onSetBpm={handleTapTempo} />
                                         </View>
                                     </View>
                                 </View>
@@ -358,6 +368,89 @@ export default function VideoPlayerScreen() {
                     style={styles.notesArea}
                 >
                     <ScrollView contentContainerStyle={styles.notesContent}>
+                        <View style={styles.section}>
+                            <Text style={styles.sectionTitle}>Loop Bookmarks</Text>
+                            <ScrollView
+                                horizontal
+                                showsHorizontalScrollIndicator={false}
+                                contentContainerStyle={styles.bookmarkRow}
+                            >
+                                <Pressable style={styles.bookmarkTilePrimary} onPress={handleSaveBookmark}>
+                                    <MaterialCommunityIcons name="bookmark-plus" size={22} color="#fff" />
+                                    <Text style={styles.bookmarkTileText}>Save</Text>
+                                </Pressable>
+                                {loopBookmarks.map((bookmark) => (
+                                    <Pressable
+                                        key={bookmark.id}
+                                        style={styles.bookmarkTile}
+                                        onPress={() => applyBookmark(bookmark)}
+                                    >
+                                        <Text style={styles.bookmarkTileTitle}>{bookmark.loopLengthBeats} counts</Text>
+                                        <Text style={styles.bookmarkTileSub}>{bookmark.bpm} BPM</Text>
+                                        <Text style={styles.bookmarkTileSub}>
+                                            {formatTime(bookmark.loopStartMillis)}
+                                        </Text>
+                                    </Pressable>
+                                ))}
+                            </ScrollView>
+                        </View>
+
+                        <View style={styles.section}>
+                            <Text style={styles.sectionTitle}>Loop Controls</Text>
+                            <View style={styles.bpmRow}>
+                                <Pressable style={styles.bpmButton} onPress={() => adjustBpm(-1)}>
+                                    <MaterialCommunityIcons name="minus" size={18} color="#fff" />
+                                </Pressable>
+                                <Text style={styles.bpmValue}>{bpm} BPM</Text>
+                                <Pressable style={styles.bpmButton} onPress={() => adjustBpm(1)}>
+                                    <MaterialCommunityIcons name="plus" size={18} color="#fff" />
+                                </Pressable>
+                                <Pressable style={styles.phaseButton} onPress={handleSetPhase}>
+                                    <Text style={styles.phaseButtonText}>Here is 1</Text>
+                                </Pressable>
+                            </View>
+
+                            <View style={styles.loopLengthRow}>
+                                {[4, 8, 16, 32].map((beats) => (
+                                    <Pressable
+                                        key={beats}
+                                        style={[
+                                            styles.loopLengthButton,
+                                            loopLengthBeats === beats && styles.loopLengthButtonActive,
+                                        ]}
+                                        onPress={() => setLoopLengthBeats(beats)}
+                                    >
+                                        <Text
+                                            style={[
+                                                styles.loopLengthText,
+                                                loopLengthBeats === beats && styles.loopLengthTextActive,
+                                            ]}
+                                        >
+                                            {beats} counts
+                                        </Text>
+                                    </Pressable>
+                                ))}
+                            </View>
+
+                            <View style={styles.loopSliderRow}>
+                                <View style={styles.loopSliderHeader}>
+                                    <Text style={styles.loopSliderLabel}>Loop window</Text>
+                                    <Text style={styles.loopSliderValue}>
+                                        {formatTime(loopStartMillis)} - {formatTime(loopEndMillis)}
+                                    </Text>
+                                </View>
+                                <Slider
+                                    style={styles.loopSlider}
+                                    minimumValue={0}
+                                    maximumValue={Math.max(0, durationMillis - loopDurationMillis)}
+                                    value={loopStartMillis}
+                                    onSlidingComplete={handleLoopStartChange}
+                                    minimumTrackTintColor="#111"
+                                    maximumTrackTintColor="#ddd"
+                                    thumbTintColor="#111"
+                                />
+                            </View>
+                        </View>
 
                         <View style={styles.metaRow}>
                             <TextInput
@@ -524,6 +617,15 @@ const styles = StyleSheet.create({
     },
     notesContent: {
         padding: 20,
+        gap: 16,
+    },
+    section: {
+        gap: 10,
+    },
+    sectionTitle: {
+        fontSize: 14,
+        fontWeight: '700',
+        color: '#111',
     },
     metaRow: {
         marginBottom: 10,
@@ -572,5 +674,117 @@ const styles = StyleSheet.create({
         color: '#333',
         minHeight: 200,
         textAlignVertical: 'top',
+    },
+    bookmarkRow: {
+        gap: 10,
+        paddingRight: 10,
+    },
+    bookmarkTile: {
+        width: 110,
+        height: 110,
+        borderRadius: 14,
+        backgroundColor: '#111',
+        padding: 12,
+        justifyContent: 'center',
+        gap: 4,
+    },
+    bookmarkTilePrimary: {
+        width: 110,
+        height: 110,
+        borderRadius: 14,
+        backgroundColor: '#000',
+        padding: 12,
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: 6,
+    },
+    bookmarkTileText: {
+        color: '#fff',
+        fontSize: 12,
+        fontWeight: '600',
+    },
+    bookmarkTileTitle: {
+        color: '#fff',
+        fontSize: 13,
+        fontWeight: '700',
+    },
+    bookmarkTileSub: {
+        color: '#bbb',
+        fontSize: 11,
+    },
+    bpmRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        flexWrap: 'wrap',
+    },
+    bpmButton: {
+        width: 32,
+        height: 32,
+        borderRadius: 8,
+        backgroundColor: '#111',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    bpmValue: {
+        fontSize: 18,
+        fontWeight: '700',
+        color: '#111',
+    },
+    phaseButton: {
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 8,
+        backgroundColor: '#f0f0f0',
+    },
+    phaseButtonText: {
+        color: '#111',
+        fontWeight: '600',
+        fontSize: 12,
+    },
+    loopLengthRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 8,
+    },
+    loopLengthButton: {
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: '#ddd',
+    },
+    loopLengthButtonActive: {
+        backgroundColor: '#111',
+        borderColor: '#111',
+    },
+    loopLengthText: {
+        color: '#111',
+        fontSize: 12,
+        fontWeight: '600',
+    },
+    loopLengthTextActive: {
+        color: '#fff',
+    },
+    loopSliderRow: {
+        gap: 6,
+    },
+    loopSliderHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+    },
+    loopSliderLabel: {
+        color: '#111',
+        fontSize: 12,
+        fontWeight: '600',
+    },
+    loopSliderValue: {
+        color: '#666',
+        fontSize: 12,
+    },
+    loopSlider: {
+        width: '100%',
+        height: 32,
     },
 });
