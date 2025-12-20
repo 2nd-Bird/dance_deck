@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Link } from 'expo-router';
 import React from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, View } from 'react-native';
 import { VideoItem } from '../types';
 
 interface VideoTileProps {
@@ -26,13 +26,11 @@ export default function VideoTile({ video, width }: VideoTileProps) {
                 ) : (
                     <View style={[styles.placeholder, { width, height: width }]}>
                         <MaterialCommunityIcons name="video" size={32} color="#fff" />
-                        <Text style={styles.typeText}>{video.sourceType.toUpperCase()}</Text>
                     </View>
                 )}
                 {/* Overlay icon for video type if needed */}
                 <View style={styles.iconOverlay}>
-                    {video.sourceType === 'youtube' && <MaterialCommunityIcons name="youtube" size={16} color="white" />}
-                    {video.sourceType === 'local' && <MaterialCommunityIcons name="file-video" size={16} color="white" />}
+                    <MaterialCommunityIcons name="file-video" size={16} color="white" />
                 </View>
             </Pressable>
         </Link>
@@ -52,11 +50,6 @@ const styles = StyleSheet.create({
         backgroundColor: '#333',
         justifyContent: 'center',
         alignItems: 'center',
-    },
-    typeText: {
-        color: '#aaa',
-        fontSize: 10,
-        marginTop: 4,
     },
     iconOverlay: {
         position: 'absolute',

@@ -1,10 +1,10 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as VideoThumbnails from 'expo-video-thumbnails';
-import React, { useState } from 'react';
-import { Alert, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import React from 'react';
+import { Alert, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import uuid from 'react-native-uuid';
-import { VideoItem, VideoSourceType } from '../types';
+import { VideoItem } from '../types';
 
 interface AddVideoModalProps {
     visible: boolean;
@@ -13,9 +13,6 @@ interface AddVideoModalProps {
 }
 
 export default function AddVideoModal({ visible, onClose, onAdd }: AddVideoModalProps) {
-    const [url, setUrl] = useState('');
-    const [loading, setLoading] = useState(false);
-
     const handleImportLocal = async () => {
         try {
             const result = await ImagePicker.launchImageLibraryAsync({
@@ -37,6 +34,7 @@ export default function AddVideoModal({ visible, onClose, onAdd }: AddVideoModal
                     console.warn("Could not generate thumbnail", e);
                 }
 
+                const now = Date.now();
                 const newVideo: VideoItem = {
                     id: uuid.v4() as string,
                     sourceType: 'local',
@@ -44,7 +42,8 @@ export default function AddVideoModal({ visible, onClose, onAdd }: AddVideoModal
                     thumbnailUri: thumbnailUri,
                     title: asset.fileName || 'Local Video',
                     tags: [],
-                    createdAt: Date.now(),
+                    createdAt: now,
+                    updatedAt: now,
                     duration: asset.duration ? asset.duration / 1000 : 0,
                 };
                 onAdd(newVideo);
@@ -53,38 +52,6 @@ export default function AddVideoModal({ visible, onClose, onAdd }: AddVideoModal
         } catch (e) {
             Alert.alert('Error', 'Failed to pick video');
         }
-    };
-
-    const handleAddUrl = () => {
-        if (!url) return;
-
-        let type: VideoSourceType = 'youtube'; // Default logic needed
-        let thumbnailUri: string | undefined = undefined;
-
-        // Simple detection
-        if (url.includes('tiktok.com')) type = 'tiktok';
-        else if (url.includes('instagram.com')) type = 'instagram';
-
-        if (url.includes('youtu') || url.includes('youtube')) {
-            const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
-            const match = url.match(regExp);
-            if (match && match[2].length === 11) {
-                thumbnailUri = `https://img.youtube.com/vi/${match[2]}/mqdefault.jpg`;
-            }
-        }
-
-        const newVideo: VideoItem = {
-            id: uuid.v4() as string,
-            sourceType: type,
-            uri: url,
-            thumbnailUri: thumbnailUri,
-            title: 'Online Video',
-            tags: [],
-            createdAt: Date.now(),
-        };
-        onAdd(newVideo);
-        setUrl('');
-        onClose();
     };
 
     return (
@@ -101,32 +68,6 @@ export default function AddVideoModal({ visible, onClose, onAdd }: AddVideoModal
                     <Pressable style={[styles.button, styles.primaryButton]} onPress={handleImportLocal}>
                         <MaterialCommunityIcons name="folder-multiple-image" size={24} color="white" />
                         <Text style={styles.buttonText}>Import from Gallery</Text>
-                    </Pressable>
-
-                    <View style={styles.dividerContainer}>
-                        <View style={styles.line} />
-                        <Text style={styles.dividerText}>OR PASTE LINK</Text>
-                        <View style={styles.line} />
-                    </View>
-
-                    <View style={styles.linkInputContainer}>
-                        <MaterialCommunityIcons name="link-variant" size={20} color="#666" style={styles.inputIcon} />
-                        <TextInput
-                            style={styles.input}
-                            placeholder="YouTube, TikTok, Instagram URL"
-                            value={url}
-                            onChangeText={setUrl}
-                            autoCapitalize="none"
-                            placeholderTextColor="#999"
-                        />
-                    </View>
-
-                    <Pressable
-                        style={[styles.button, styles.secondaryButton, !url && styles.disabled]}
-                        onPress={handleAddUrl}
-                        disabled={!url}
-                    >
-                        <Text style={[styles.buttonText, !url && styles.disabledText]}>Add Link</Text>
                     </Pressable>
                 </View>
             </View>
@@ -170,55 +111,9 @@ const styles = StyleSheet.create({
     primaryButton: {
         backgroundColor: '#000',
     },
-    secondaryButton: {
-        backgroundColor: '#007AFF',
-        marginTop: 10,
-    },
-    disabled: {
-        backgroundColor: '#F0F0F0',
-        elevation: 0,
-        shadowOpacity: 0,
-    },
     buttonText: {
         color: '#fff',
         fontWeight: '600',
         fontSize: 16,
     },
-    disabledText: {
-        color: '#999',
-    },
-    linkInputContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        borderWidth: 1,
-        borderColor: '#E0E0E0',
-        borderRadius: 12,
-        backgroundColor: '#FAFAFA',
-        paddingHorizontal: 12,
-    },
-    inputIcon: {
-        marginRight: 8,
-    },
-    input: {
-        flex: 1,
-        paddingVertical: 16,
-        fontSize: 16,
-        color: '#000',
-    },
-    dividerContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginVertical: 24,
-    },
-    line: {
-        flex: 1,
-        height: 1,
-        backgroundColor: '#EEEEEE',
-    },
-    dividerText: {
-        color: '#999',
-        fontSize: 12,
-        marginHorizontal: 10,
-        fontWeight: '500',
-    }
 });

@@ -3,10 +3,10 @@ import React, { useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
 interface TapTempoButtonProps {
-    onSetLoop: (bpm: number, lengthInBeats: number) => void;
+    onSetBpm: (bpm: number) => void;
 }
 
-export default function TapTempoButton({ onSetLoop }: TapTempoButtonProps) {
+export default function TapTempoButton({ onSetBpm }: TapTempoButtonProps) {
     const [modalVisible, setModalVisible] = useState(false);
     const [taps, setTaps] = useState<number[]>([]);
     const [bpm, setBpm] = useState<number | null>(null);
@@ -32,12 +32,11 @@ export default function TapTempoButton({ onSetLoop }: TapTempoButtonProps) {
         setBpm(null);
     };
 
-    const applyLoop = (counts: number) => {
-        if (bpm) {
-            onSetLoop(bpm, counts);
-            setModalVisible(false);
-            reset();
-        }
+    const applyBpm = () => {
+        if (!bpm) return;
+        onSetBpm(bpm);
+        setModalVisible(false);
+        reset();
     };
 
     return (
@@ -61,14 +60,9 @@ export default function TapTempoButton({ onSetLoop }: TapTempoButtonProps) {
                         </Pressable>
 
                         {bpm && (
-                            <View style={styles.optionsGrid}>
-                                {[4, 8, 16, 32].map(count => (
-                                    <Pressable key={count} style={styles.optionBtn} onPress={() => applyLoop(count)}>
-                                        <Text style={styles.optionText}>{count} Counts</Text>
-                                        <Text style={styles.subText}>{count / 4} Bar</Text>
-                                    </Pressable>
-                                ))}
-                            </View>
+                            <Pressable style={styles.applyBtn} onPress={applyBpm}>
+                                <Text style={styles.applyText}>Use {bpm} BPM</Text>
+                            </Pressable>
                         )}
 
                         <Pressable style={styles.closeBtn} onPress={() => setModalVisible(false)}>
@@ -134,27 +128,16 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         letterSpacing: 2,
     },
-    optionsGrid: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        gap: 10,
-        justifyContent: 'center',
+    applyBtn: {
+        backgroundColor: '#007AFF',
+        paddingVertical: 12,
+        paddingHorizontal: 18,
+        borderRadius: 10,
         marginBottom: 20,
     },
-    optionBtn: {
-        backgroundColor: '#444',
-        padding: 10,
-        borderRadius: 8,
-        width: '45%',
-        alignItems: 'center',
-    },
-    optionText: {
+    applyText: {
         color: '#fff',
-        fontWeight: 'bold',
-    },
-    subText: {
-        color: '#bbb',
-        fontSize: 10,
+        fontWeight: '700',
     },
     closeBtn: {
         padding: 10,

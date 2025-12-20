@@ -24,7 +24,13 @@ export const saveVideos = async (videos: VideoItem[]): Promise<void> => {
 
 export const addVideo = async (video: VideoItem): Promise<void> => {
     const videos = await getVideos();
-    const newVideos = [video, ...videos];
+    const now = Date.now();
+    const newVideo = {
+        ...video,
+        createdAt: video.createdAt ?? now,
+        updatedAt: video.updatedAt ?? now,
+    };
+    const newVideos = [newVideo, ...videos];
     await saveVideos(newVideos);
 };
 
@@ -36,6 +42,8 @@ export const deleteVideo = async (id: string): Promise<void> => {
 
 export const updateVideo = async (updatedVideo: VideoItem): Promise<void> => {
     const videos = await getVideos();
-    const newVideos = videos.map((v) => (v.id === updatedVideo.id ? updatedVideo : v));
+    const now = Date.now();
+    const videoWithUpdatedAt = { ...updatedVideo, updatedAt: now };
+    const newVideos = videos.map((v) => (v.id === updatedVideo.id ? videoWithUpdatedAt : v));
     await saveVideos(newVideos);
 };
