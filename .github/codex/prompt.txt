@@ -1,0 +1,18 @@
+You are Codex running in this repository. Follow the automation policy in AGENTS.md and only change product behavior when required by failing tests; if product behavior changes are needed, follow SPEC.md.
+
+First, read these files for failure context:
+- .github/codex/ci_failure_summary.txt
+- .github/codex/ci_failure.log (if the summary is insufficient)
+- .github/codex/ci_env.txt
+
+Goal: identify the minimum change to make CI pass. Do not change unrelated code. Do not modify app UX unless required by failing tests.
+
+After making changes, run the standard commands:
+- pnpm install
+- pnpm lint
+- pnpm typecheck
+- pnpm test
+- pnpm build
+
+Commit with message: chore(autofix): fix CI failure
+Push the commit back to the same branch. If pushing is not possible, open a PR instead.

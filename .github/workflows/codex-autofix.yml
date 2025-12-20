@@ -20,7 +20,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || github.ref_name }}
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
           repository: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_repository.full_name || github.repository }}
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -47,9 +47,38 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+      - name: Collect environment info
+        run: |
+          mkdir -p .github/codex
+          {
+            echo "Runner OS: ${RUNNER_OS}"
+            echo "Node: $(node -v)"
+            echo "pnpm: $(pnpm -v)"
+          } > .github/codex/ci_env.txt
+      - name: Capture CI failure logs
+        continue-on-error: true
+        run: |
+          set +e
+          mkdir -p .github/codex
+          : > .github/codex/ci_failure.log
+          for cmd in "pnpm install" "pnpm lint" "pnpm typecheck" "pnpm test" "pnpm build"; do
+            echo "=== ${cmd} ===" | tee -a .github/codex/ci_failure.log
+            eval "${cmd}" 2>&1 | tee -a .github/codex/ci_failure.log
+          done
+          exit 0
+      - name: Summarize CI failure logs
+        run: |
+          if [ -f .github/codex/ci_failure.log ]; then
+            {
+              echo "== Error lines =="
+              grep -n -E "Error|ERR!|FAIL|Failed|TypeError" .github/codex/ci_failure.log | head -n 200 || true
+              echo "== Log tail =="
+              tail -n 200 .github/codex/ci_failure.log || true
+            } > .github/codex/ci_failure_summary.txt
+          fi
       - name: Codex AutoFix
         uses: openai/codex-action@v1
         with:
-          openai_api_key: ${{ secrets.CODEX_API_KEY }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          base_ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || github.ref_name }}
+          openai-api-key: ${{ secrets.CODEX_API_KEY }}
+          prompt-file: .github/codex/prompt.txt
+          working-directory: .
