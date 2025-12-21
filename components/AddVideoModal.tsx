@@ -1,9 +1,8 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import * as VideoThumbnails from 'expo-video-thumbnails';
 import React from 'react';
 import { Alert, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import uuid from 'react-native-uuid';
+import { importLocalVideoAsset } from '@/services/media';
 import { VideoItem } from '../types';
 
 interface AddVideoModalProps {
@@ -23,33 +22,12 @@ export default function AddVideoModal({ visible, onClose, onAdd }: AddVideoModal
 
             if (!result.canceled && result.assets && result.assets.length > 0) {
                 const asset = result.assets[0];
-
-                let thumbnailUri = undefined;
-                try {
-                    const { uri } = await VideoThumbnails.getThumbnailAsync(asset.uri, {
-                        time: 1000,
-                    });
-                    thumbnailUri = uri;
-                } catch (e) {
-                    console.warn("Could not generate thumbnail", e);
-                }
-
-                const now = Date.now();
-                const newVideo: VideoItem = {
-                    id: uuid.v4() as string,
-                    sourceType: 'local',
-                    uri: asset.uri,
-                    thumbnailUri: thumbnailUri,
-                    title: asset.fileName || 'Local Video',
-                    tags: [],
-                    createdAt: now,
-                    updatedAt: now,
-                    duration: asset.duration ? asset.duration / 1000 : 0,
-                };
+                const newVideo = await importLocalVideoAsset(asset);
                 onAdd(newVideo);
                 onClose();
             }
-        } catch (e) {
+        } catch (error) {
+            console.warn('Failed to pick video', error);
             Alert.alert('Error', 'Failed to pick video');
         }
     };

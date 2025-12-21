@@ -1,14 +1,13 @@
 import VideoGrid from '@/components/VideoGrid';
 import { filterVideosByTags, sortVideosByRecency, TagSearchMode } from '@/services/library';
+import { importLocalVideoAsset } from '@/services/media';
 import { addVideo, getVideos } from '@/services/storage';
 import { VideoItem } from '@/types';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import * as VideoThumbnails from 'expo-video-thumbnails';
 import { useFocusEffect } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, ActivityIndicator, Pressable, SafeAreaView, StyleSheet, Text, TextInput, View } from 'react-native';
-import uuid from 'react-native-uuid';
 
 export default function HomeScreen() {
   const [videos, setVideos] = useState<VideoItem[]>([]);
@@ -51,32 +50,11 @@ export default function HomeScreen() {
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const asset = result.assets[0];
-
-        let thumbnailUri = undefined;
-        try {
-          const { uri } = await VideoThumbnails.getThumbnailAsync(asset.uri, {
-            time: 1000,
-          });
-          thumbnailUri = uri;
-        } catch (e) {
-          console.warn('Could not generate thumbnail', e);
-        }
-
-        const now = Date.now();
-        const newVideo: VideoItem = {
-          id: uuid.v4() as string,
-          sourceType: 'local',
-          uri: asset.uri,
-          thumbnailUri: thumbnailUri,
-          title: asset.fileName || 'Local Video',
-          tags: [],
-          createdAt: now,
-          updatedAt: now,
-          duration: asset.duration ? asset.duration / 1000 : 0,
-        };
+        const newVideo = await importLocalVideoAsset(asset);
         await handleAddVideo(newVideo);
       }
-    } catch (e) {
+    } catch (error) {
+      console.warn('Failed to pick video', error);
       Alert.alert('Error', 'Failed to pick video');
     }
   };
