@@ -1,10 +1,9 @@
 name: PR Automation
 
 on:
-  push:
-    branches:
-      - "fix/**"
-      - "feature/**"
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
 
 permissions:
   contents: write
@@ -12,18 +11,23 @@ permissions:
 
 jobs:
   pr:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
       - name: Ensure PR exists
         run: |
-          if ! gh pr list --head "$GITHUB_REF_NAME" --json number -q '.[0].number' >/dev/null 2>&1; then
-            gh pr create --fill --base main --head "$GITHUB_REF_NAME"
+          BRANCH="${{ github.event.workflow_run.head_branch }}"
+          case "$BRANCH" in
+            feature/*|fix/*) ;;
+            *) exit 0 ;;
+          esac
+
+          PR_NUMBER=$(gh pr list --head "$BRANCH" --base main --json number -q '.[0].number')
+          if [ -z "$PR_NUMBER" ]; then
+            gh pr create --fill --head "$BRANCH" --base main
           fi
 
       - name: Enable auto-merge
-        run: gh pr merge --auto --squash --delete-branch
+        run: gh pr merge --auto --squash --delete-branch || true
