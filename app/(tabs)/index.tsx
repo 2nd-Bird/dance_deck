@@ -43,7 +43,7 @@ export default function HomeScreen() {
   const handleImportLocal = async () => {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+        mediaTypes: ['videos'] as ImagePicker.MediaType[],
         allowsEditing: false,
         quality: 1,
       });

@@ -1,5 +1,6 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
+import * as MediaLibrary from 'expo-media-library';
 import * as VideoThumbnails from 'expo-video-thumbnails';
 import uuid from 'react-native-uuid';
 import { VideoItem } from '@/types';
@@ -29,6 +30,18 @@ const getExtension = (uri: string, fileName?: string | null) => {
   return match ? `.${match[1].toLowerCase()}` : '';
 };
 
+const resolveAssetUri = async (asset: ImagePicker.ImagePickerAsset): Promise<string> => {
+  if (asset.assetId) {
+    try {
+      const info = await MediaLibrary.getAssetInfoAsync(asset.assetId);
+      return info.localUri ?? info.uri ?? asset.uri;
+    } catch (e) {
+      console.warn('Failed to resolve media asset info', e);
+    }
+  }
+  return asset.uri;
+};
+
 export const importLocalVideoAsset = async (
   asset: ImagePicker.ImagePickerAsset
 ): Promise<VideoItem> => {
@@ -38,9 +51,10 @@ export const importLocalVideoAsset = async (
   const extension = getExtension(asset.uri, asset.fileName) || '.mp4';
   const videoUri = `${videoDir}${id}${extension}`;
 
-  let sourceUri = asset.uri;
+  const resolvedUri = await resolveAssetUri(asset);
+  let sourceUri = resolvedUri;
   try {
-    await FileSystem.copyAsync({ from: asset.uri, to: videoUri });
+    await FileSystem.copyAsync({ from: resolvedUri, to: videoUri });
     sourceUri = videoUri;
   } catch (e) {
     console.warn('Failed to copy video to app storage', e);
