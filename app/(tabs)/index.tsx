@@ -17,9 +17,6 @@ export default function HomeScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchMode, setSearchMode] = useState<TagSearchMode>('and');
 
-  const getLatestTimestamp = (items: VideoItem[]) =>
-    items.reduce((latest, video) => Math.max(latest, video.updatedAt ?? video.createdAt ?? 0), 0);
-
   const ensureThumbnails = async (items: VideoItem[]) => {
     const updated = await Promise.all(items.map((video) => ensureVideoThumbnail(video)));
     const changed = updated.some((video, index) => video.thumbnailUri !== items[index]?.thumbnailUri);
@@ -40,14 +37,8 @@ export default function HomeScreen() {
     }
     const hydrated = await ensureThumbnails(data);
     const sorted = sortVideosByRecency(hydrated);
-    setVideos((current) => {
-      const incomingLatest = getLatestTimestamp(sorted);
-      const currentLatest = getLatestTimestamp(current);
-      const shouldReplace = incomingLatest > currentLatest || sorted.length > current.length;
-      const next = shouldReplace ? sorted : current;
-      setFilteredVideos(filterVideosByTags(next, searchQuery, searchMode));
-      return next;
-    });
+    setVideos(sorted);
+    setFilteredVideos(filterVideosByTags(sorted, searchQuery, searchMode));
     setLoading(false);
   };
 
