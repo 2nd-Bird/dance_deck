@@ -61,7 +61,6 @@ export default function HomeScreen() {
         allowsEditing: false,
         quality: 1,
         preferredAssetRepresentationMode: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
-        legacy: true,
       });
 
       const asset = getVideoAssetFromPicker(result);

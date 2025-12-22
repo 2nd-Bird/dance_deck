@@ -61,16 +61,35 @@ const getExtension = (uri: string, fileName?: string | null) => {
   return match ? `.${match[1].toLowerCase()}` : '';
 };
 
-const resolveAssetUri = async (asset: ImagePicker.ImagePickerAsset): Promise<string> => {
+const resolveAssetUris = async (asset: ImagePicker.ImagePickerAsset): Promise<string[]> => {
+  const candidates: string[] = [];
   if (asset.assetId) {
     try {
       const info = await MediaLibrary.getAssetInfoAsync(asset.assetId);
-      return info.localUri ?? info.uri ?? asset.uri;
+      if (info.localUri) candidates.push(info.localUri);
+      if (info.uri) candidates.push(info.uri);
     } catch (e) {
       console.warn('Failed to resolve media asset info', e);
     }
   }
-  return asset.uri;
+  if (asset.uri) candidates.push(asset.uri);
+  return Array.from(new Set(candidates));
+};
+
+const persistVideoAsset = async (
+  asset: ImagePicker.ImagePickerAsset,
+  destinationUri: string
+): Promise<string> => {
+  const candidates = await resolveAssetUris(asset);
+  for (const candidate of candidates) {
+    try {
+      await FileSystem.copyAsync({ from: candidate, to: destinationUri });
+      return destinationUri;
+    } catch (e) {
+      console.warn('Failed to copy video candidate', e);
+    }
+  }
+  return candidates[0] ?? asset.uri;
 };
 
 const createThumbnailForVideo = async (sourceUri: string, id: string): Promise<string | undefined> => {
@@ -101,14 +120,7 @@ export const importLocalVideoAsset = async (
   const extension = getExtension(asset.uri, asset.fileName) || '.mp4';
   const videoUri = `${videoDir}${id}${extension}`;
 
-  const resolvedUri = await resolveAssetUri(asset);
-  let sourceUri = resolvedUri;
-  try {
-    await FileSystem.copyAsync({ from: resolvedUri, to: videoUri });
-    sourceUri = videoUri;
-  } catch (e) {
-    console.warn('Failed to copy video to app storage', e);
-  }
+  const sourceUri = await persistVideoAsset(asset, videoUri);
 
   const thumbnailUri = await createThumbnailForVideo(sourceUri, id);
 

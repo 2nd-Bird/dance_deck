@@ -18,6 +18,7 @@ export default function AddVideoModal({ visible, onClose, onAdd }: AddVideoModal
                 mediaTypes: ['videos'] as ImagePicker.MediaType[],
                 allowsEditing: false,
                 quality: 1,
+                preferredAssetRepresentationMode: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
             });
 
             const asset = getVideoAssetFromPicker(result);
