@@ -5,6 +5,7 @@ import { addVideo, getVideos, saveVideos } from '@/services/storage';
 import { VideoItem } from '@/types';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as MediaLibrary from 'expo-media-library';
 import { useFocusEffect } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, ActivityIndicator, Pressable, SafeAreaView, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -28,6 +29,12 @@ export default function HomeScreen() {
   const loadData = async () => {
     setLoading(true);
     const data = await getVideos();
+    if (__DEV__) {
+      console.log('[Library] load videos', {
+        count: data.length,
+        first: data[0] ?? null,
+      });
+    }
     const hydrated = await ensureThumbnails(data);
     const sorted = sortVideosByRecency(hydrated);
     setVideos(sorted);
@@ -56,6 +63,12 @@ export default function HomeScreen() {
 
   const handleImportLocal = async () => {
     try {
+      const mediaPermission = await MediaLibrary.requestPermissionsAsync();
+      if (!mediaPermission.granted) {
+        Alert.alert('Permission required', 'Allow access to your media library to import videos.');
+        return;
+      }
+
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['videos'] as ImagePicker.MediaType[],
         allowsEditing: false,
@@ -64,6 +77,15 @@ export default function HomeScreen() {
       });
 
       const asset = getVideoAssetFromPicker(result);
+      if (__DEV__ && asset) {
+        console.log('[Import] picker asset', {
+          uri: asset.uri,
+          fileName: asset.fileName,
+          duration: asset.duration,
+          type: asset.type,
+          assetId: asset.assetId,
+        });
+      }
       if (asset) {
         const importedVideo = await importLocalVideoAsset(asset);
         const newVideo = await ensureVideoThumbnail(importedVideo);
