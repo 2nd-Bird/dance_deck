@@ -23,63 +23,60 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
 
-      - name: Create local branch
+      - name: Create PR and Auto-merge
         run: |
+          # 1. 変数のセットアップ
           BRANCH="${{ github.event.workflow_run.head_branch }}"
           echo "Target Branch: $BRANCH"
-          
-          # ブランチ名がない場合は終了
+
           if [ -z "$BRANCH" ]; then
-            echo "No branch name found. Exiting."
-            exit 0
+            echo "Error: No branch name found."
+            exit 1
           fi
 
-          # 対象ブランチ（feature/ または fix/）以外は終了
+          # 2. 対象ブランチのフィルタリング
           case "$BRANCH" in
             feature/*|fix/*) ;;
-            *) echo "Branch $BRANCH is not eligible. Exiting."; exit 0 ;;
+            *) echo "Branch $BRANCH is not eligible. Skipping."; exit 0 ;;
           esac
 
-          # Detached HEAD状態から、ブランチ名付きのローカルブランチへ切り替え
+          # 3. Git環境の整備 (ここが重要: 比較元をfetchし、ローカルブランチを作成)
+          git fetch origin main
           git checkout -b "$BRANCH"
 
-          # 後のステップで参照するために環境変数へセット
-          echo "TARGET_BRANCH=$BRANCH" >> "$GITHUB_ENV"
+          # 4. 既存PRの確認
+          PR_NUMBER=$(gh pr list --head "$BRANCH" --base main --json number -q '.[0].number')
 
-      - name: Create PR if not exists
-        id: create_pr
-        run: |
-          # 既存のPRを確認
-          PR_NUMBER=$(gh pr list --head "$TARGET_BRANCH" --base main --json number -q '.[0].number')
-          
           if [ -n "$PR_NUMBER" ]; then
             echo "PR already exists: #$PR_NUMBER"
           else
             echo "Creating new PR..."
-            # コミットメッセージからタイトルと本文を取得
+            
+            # コミットメッセージからタイトルと本文を取得 (gh --fill の代わり)
+            # -s: 件名(Subject), -b: 本文(Body)
             PR_TITLE=$(git log -1 --pretty=%s)
             PR_BODY=$(git log -1 --pretty=%b)
-            
-            # タイトルが空の場合のフォールバック
-            if [ -z "$PR_TITLE" ]; then
-              PR_TITLE="Auto-created PR for $TARGET_BRANCH"
-            fi
 
-            # PRを作成 (明示的にtitleとbodyを指定することで --fill エラーを回避)
+            # 空の場合のデフォルト値
+            if [ -z "$PR_TITLE" ]; then PR_TITLE="Auto-created PR for $BRANCH"; fi
+            if [ -z "$PR_BODY" ]; then PR_BODY="Automated PR creation."; fi
+
+            # PR作成 (明示的にタイトルと本文を渡すことでgitエラーを回避)
             gh pr create \
-              --head "$TARGET_BRANCH" \
+              --head "$BRANCH" \
               --base main \
               --title "$PR_TITLE" \
               --body "$PR_BODY"
             
-            # 作成したPR番号を再取得
-            PR_NUMBER=$(gh pr list --head "$TARGET_BRANCH" --base main --json number -q '.[0].number')
+            # 番号を再取得
+            PR_NUMBER=$(gh pr list --head "$BRANCH" --base main --json number -q '.[0].number')
           fi
 
-          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
-
-      - name: Enable auto-merge
-        if: ${{ steps.create_pr.outputs.pr_number != '' }}
-        run: |
-          echo "Enabling auto-merge for PR #${{ steps.create_pr.outputs.pr_number }}"
-          gh pr merge "${{ steps.create_pr.outputs.pr_number }}" --auto --squash --delete-branch
+          # 5. オートマージの設定
+          if [ -n "$PR_NUMBER" ]; then
+            echo "Enabling auto-merge for PR #$PR_NUMBER"
+            gh pr merge "$PR_NUMBER" --auto --squash --delete-branch
+          else
+            echo "Error: Failed to retrieve PR number."
+            exit 1
+          fi
