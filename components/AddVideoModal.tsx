@@ -2,7 +2,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import React from 'react';
 import { Alert, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import { importLocalVideoAsset } from '@/services/media';
+import { getVideoAssetFromPicker, importLocalVideoAsset } from '@/services/media';
 import { VideoItem } from '../types';
 
 interface AddVideoModalProps {
@@ -20,8 +20,8 @@ export default function AddVideoModal({ visible, onClose, onAdd }: AddVideoModal
                 quality: 1,
             });
 
-            if (!result.canceled && result.assets && result.assets.length > 0) {
-                const asset = result.assets[0];
+            const asset = getVideoAssetFromPicker(result);
+            if (asset) {
                 const newVideo = await importLocalVideoAsset(asset);
                 onAdd(newVideo);
                 onClose();

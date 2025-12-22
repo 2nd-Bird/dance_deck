@@ -1,6 +1,6 @@
 import VideoGrid from '@/components/VideoGrid';
 import { filterVideosByTags, sortVideosByRecency, TagSearchMode } from '@/services/library';
-import { ensureVideoThumbnail, importLocalVideoAsset } from '@/services/media';
+import { ensureVideoThumbnail, getVideoAssetFromPicker, importLocalVideoAsset } from '@/services/media';
 import { addVideo, getVideos, saveVideos } from '@/services/storage';
 import { VideoItem } from '@/types';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -64,8 +64,8 @@ export default function HomeScreen() {
         legacy: true,
       });
 
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        const asset = result.assets[0];
+      const asset = getVideoAssetFromPicker(result);
+      if (asset) {
         const importedVideo = await importLocalVideoAsset(asset);
         const newVideo = await ensureVideoThumbnail(importedVideo);
         await handleAddVideo(newVideo);

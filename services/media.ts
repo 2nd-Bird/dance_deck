@@ -5,6 +5,37 @@ import * as VideoThumbnails from 'expo-video-thumbnails';
 import uuid from 'react-native-uuid';
 import { VideoItem } from '@/types';
 
+type LegacyPickerResult = {
+  cancelled?: boolean;
+  canceled?: boolean;
+  uri?: string;
+  width?: number;
+  height?: number;
+  duration?: number | null;
+  fileName?: string | null;
+  assetId?: string | null;
+};
+
+export const getVideoAssetFromPicker = (
+  result: ImagePicker.ImagePickerResult | LegacyPickerResult
+): ImagePicker.ImagePickerAsset | null => {
+  if ('assets' in result && result.assets && result.assets.length > 0) {
+    return result.assets[0];
+  }
+  if ('uri' in result && result.uri) {
+    return {
+      uri: result.uri,
+      width: result.width ?? 0,
+      height: result.height ?? 0,
+      fileName: result.fileName ?? null,
+      duration: result.duration ?? null,
+      assetId: result.assetId ?? null,
+      type: 'video',
+    };
+  }
+  return null;
+};
+
 const getMediaDirs = () => {
   const baseDir = FileSystem.documentDirectory ?? FileSystem.cacheDirectory;
   if (!baseDir) {
