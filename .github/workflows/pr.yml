@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   pr:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' }}
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -23,13 +23,24 @@ jobs:
           ref: ${{ github.event.workflow_run.head_branch }}
           fetch-depth: 0
 
-      - name: Fetch main ref
-        run: git fetch origin main:refs/remotes/origin/main
+      - name: Prepare git refs
+        run: |
+          BRANCH="${{ github.event.workflow_run.head_branch }}"
+          if [ -z "$BRANCH" ]; then
+            echo "Missing head branch; skipping."
+            exit 0
+          fi
+          git fetch origin main:refs/remotes/origin/main
+          git checkout -B "$BRANCH" "${{ github.event.workflow_run.head_sha }}"
 
       - name: Ensure PR exists
         id: ensure_pr
         run: |
           BRANCH="${{ github.event.workflow_run.head_branch }}"
+          if [ -z "$BRANCH" ]; then
+            echo "pr_number=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           case "$BRANCH" in
             feature/*|fix/*) ;;
             *) echo "pr_number=" >> "$GITHUB_OUTPUT"; exit 0 ;;
