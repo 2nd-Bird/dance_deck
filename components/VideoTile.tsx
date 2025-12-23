@@ -9,6 +9,8 @@ interface VideoTileProps {
     width: number;
 }
 
+let hasLoggedTileLayout = false;
+
 export default function VideoTile({ video, width }: VideoTileProps) {
     const getThumbnail = () => {
         if (video.thumbnailUri) {
@@ -19,41 +21,58 @@ export default function VideoTile({ video, width }: VideoTileProps) {
     };
 
     return (
-        <Link href={`/video/${video.id}`} asChild>
-            <Pressable style={[styles.container, { width, height: width }]}>
-                {video.thumbnailUri ? (
-                    <Image
-                        source={{ uri: video.thumbnailUri }}
-                        style={styles.image}
-                        resizeMode="cover"
-                        onError={(event) => {
-                            if (!__DEV__) return;
-                            console.log(
-                                '[Home][Thumbnail][error]',
-                                JSON.stringify({
-                                    id: video.id,
-                                    uri: video.thumbnailUri ?? null,
-                                    error: event.nativeEvent?.error ?? null,
-                                })
-                            );
-                        }}
-                    />
-                ) : (
-                    <View style={[styles.placeholder, { width, height: width }]}>
-                        <MaterialCommunityIcons name="video" size={32} color="#fff" />
+        <View style={[styles.wrapper, { width, height: width }]}>
+            <Link href={`/video/${video.id}`} asChild>
+                <Pressable
+                    style={styles.container}
+                    onLayout={(event) => {
+                        if (!__DEV__ || hasLoggedTileLayout) return;
+                        hasLoggedTileLayout = true;
+                        const { width: layoutWidth, height: layoutHeight } = event.nativeEvent.layout;
+                        console.log(
+                            '[Home][Tile][layout]',
+                            JSON.stringify({ id: video.id, layoutWidth, layoutHeight })
+                        );
+                    }}
+                >
+                    {video.thumbnailUri ? (
+                        <Image
+                            source={{ uri: video.thumbnailUri }}
+                            style={styles.image}
+                            resizeMode="cover"
+                            onError={(event) => {
+                                if (!__DEV__) return;
+                                console.log(
+                                    '[Home][Thumbnail][error]',
+                                    JSON.stringify({
+                                        id: video.id,
+                                        uri: video.thumbnailUri ?? null,
+                                        error: event.nativeEvent?.error ?? null,
+                                    })
+                                );
+                            }}
+                        />
+                    ) : (
+                        <View style={styles.placeholder}>
+                            <MaterialCommunityIcons name="video" size={32} color="#fff" />
+                        </View>
+                    )}
+                    {/* Overlay icon for video type if needed */}
+                    <View style={styles.iconOverlay}>
+                        <MaterialCommunityIcons name="file-video" size={16} color="white" />
                     </View>
-                )}
-                {/* Overlay icon for video type if needed */}
-                <View style={styles.iconOverlay}>
-                    <MaterialCommunityIcons name="file-video" size={16} color="white" />
-                </View>
-            </Pressable>
-        </Link>
+                </Pressable>
+            </Link>
+        </View>
     );
 }
 
 const styles = StyleSheet.create({
+    wrapper: {
+        overflow: 'hidden',
+    },
     container: {
+        flex: 1,
         borderWidth: 0.5,
         borderColor: '#000',
     },
@@ -62,6 +81,7 @@ const styles = StyleSheet.create({
         height: '100%',
     },
     placeholder: {
+        flex: 1,
         backgroundColor: '#333',
         justifyContent: 'center',
         alignItems: 'center',
