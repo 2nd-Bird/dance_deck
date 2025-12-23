@@ -1,38 +1,91 @@
 import VideoGrid from '@/components/VideoGrid';
-import { filterVideosByTags, sortVideosByRecency, TagSearchMode } from '@/services/library';
+import { filterVideosByTags, parseTagQuery, sortVideosByRecency, TagSearchMode } from '@/services/library';
 import { ensureVideoThumbnail, getVideoAssetFromPicker, importLocalVideoAsset } from '@/services/media';
 import { addVideo, getVideos, saveVideos } from '@/services/storage';
 import { VideoItem } from '@/types';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as MediaLibrary from 'expo-media-library';
 import { useFocusEffect } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, ActivityIndicator, Pressable, SafeAreaView, StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, ActivityIndicator, Pressable, SafeAreaView, StyleSheet, Text, TextInput, View, ViewToken } from 'react-native';
 
 export default function HomeScreen() {
   const [videos, setVideos] = useState<VideoItem[]>([]);
-  const [filteredVideos, setFilteredVideos] = useState<VideoItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchMode, setSearchMode] = useState<TagSearchMode>('and');
+  const loadSequence = useRef(0);
+  const lastStorageSnapshot = useRef({ count: 0, firstId: null as string | null, lastId: null as string | null });
+  const hasLoggedViewableItems = useRef(false);
+  const pendingImportIds = useRef<Set<string>>(new Set());
 
   const ensureThumbnails = async (items: VideoItem[]) => {
     const updated = await Promise.all(items.map((video) => ensureVideoThumbnail(video)));
     const changed = updated.some((video, index) => video.thumbnailUri !== items[index]?.thumbnailUri);
-    if (changed) {
-      await saveVideos(sortVideosByRecency(updated));
-    }
-    return updated;
+    return { updated, changed };
   };
 
   const loadData = async () => {
+    const sequence = loadSequence.current + 1;
+    loadSequence.current = sequence;
+    const startTime = Date.now();
+    if (__DEV__) {
+      console.log('[Library][loadData][start]', JSON.stringify({ loadId: sequence }));
+    }
     setLoading(true);
-    const data = await getVideos();
-    const hydrated = await ensureThumbnails(data);
-    const sorted = sortVideosByRecency(hydrated);
-    setVideos(sorted);
-    setFilteredVideos(sorted);
-    setLoading(false);
+    try {
+      const data = await getVideos();
+      lastStorageSnapshot.current = {
+        count: data.length,
+        firstId: data[0]?.id ?? null,
+        lastId: data.length > 0 ? data[data.length - 1]?.id ?? null : null,
+      };
+      if (__DEV__) {
+        console.log(
+          '[Library][loadData][end]',
+          JSON.stringify({
+            loadId: sequence,
+            storageCount: data.length,
+            storageFirstId: lastStorageSnapshot.current.firstId,
+            storageLastId: lastStorageSnapshot.current.lastId,
+            tookMs: Date.now() - startTime,
+          })
+        );
+      }
+      if (__DEV__) {
+        console.log('[Library] load videos', {
+          count: data.length,
+          first: data[0] ?? null,
+        });
+      }
+      const { updated, changed } = await ensureThumbnails(data);
+      const sorted = sortVideosByRecency(updated);
+      if (sequence !== loadSequence.current) {
+        return;
+      }
+      if (pendingImportIds.current.size > 0) {
+        const incomingIds = new Set(sorted.map((video) => video.id));
+        const missingIds = Array.from(pendingImportIds.current).filter((id) => !incomingIds.has(id));
+        if (missingIds.length > 0) {
+          if (__DEV__) {
+            console.log('[Library] skip stale load', { missingIds });
+          }
+          return;
+        }
+        pendingImportIds.current.clear();
+      }
+      setVideos(sorted);
+      if (changed && pendingImportIds.current.size === 0) {
+        await saveVideos(sorted);
+      }
+    } catch (error) {
+      console.warn('Failed to load library', error);
+    } finally {
+      if (sequence === loadSequence.current) {
+        setLoading(false);
+      }
+    }
   };
 
   useFocusEffect(
@@ -41,21 +94,73 @@ export default function HomeScreen() {
     }, [])
   );
 
+  const filteredVideos = useMemo(
+    () => filterVideosByTags(videos, searchQuery, searchMode),
+    [videos, searchQuery, searchMode]
+  );
+  const selectedTags = useMemo(() => parseTagQuery(searchQuery), [searchQuery]);
+
   useEffect(() => {
-    setFilteredVideos(filterVideosByTags(videos, searchQuery, searchMode));
-  }, [searchQuery, videos, searchMode]);
+    if (!__DEV__) return;
+    const firstId = filteredVideos[0]?.id ?? null;
+    const lastId = filteredVideos.length > 0 ? filteredVideos[filteredVideos.length - 1]?.id ?? null : null;
+    const payload = {
+      videosCount: videos.length,
+      filteredCount: filteredVideos.length,
+      selectedTags,
+      mode: searchMode,
+      searchText: searchQuery,
+      isLoading: loading,
+      firstId,
+      lastId,
+    };
+    console.log('[HomeRender]', JSON.stringify(payload));
+    if (
+      lastStorageSnapshot.current.count > 0 &&
+      selectedTags.length === 0 &&
+      searchQuery.trim().length === 0 &&
+      filteredVideos.length === 0
+    ) {
+      console.log(
+        '[ASSERT]',
+        JSON.stringify({
+          storageCount: lastStorageSnapshot.current.count,
+          filteredCount: filteredVideos.length,
+          selectedTags,
+          searchText: searchQuery,
+        })
+      );
+    }
+  });
+
+  const handleViewableItemsChanged = useCallback(
+    ({ viewableItems }: { viewableItems: ViewToken[]; changed: ViewToken[] }) => {
+      if (!__DEV__ || hasLoggedViewableItems.current) return;
+      hasLoggedViewableItems.current = true;
+      console.log('[Home][FlatList][viewable]', JSON.stringify({ count: viewableItems.length }));
+    },
+    []
+  );
 
   const handleAddVideo = async (video: VideoItem) => {
     await addVideo(video);
+    pendingImportIds.current.add(video.id);
+    loadSequence.current += 1;
     setVideos((prev) => {
       const next = sortVideosByRecency([video, ...prev]);
-      setFilteredVideos(filterVideosByTags(next, searchQuery, searchMode));
       return next;
     });
+    setLoading(false);
   };
 
   const handleImportLocal = async () => {
     try {
+      const mediaPermission = await MediaLibrary.requestPermissionsAsync();
+      if (!mediaPermission.granted) {
+        Alert.alert('Permission required', 'Allow access to your media library to import videos.');
+        return;
+      }
+
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['videos'] as ImagePicker.MediaType[],
         allowsEditing: false,
@@ -64,6 +169,15 @@ export default function HomeScreen() {
       });
 
       const asset = getVideoAssetFromPicker(result);
+      if (__DEV__ && asset) {
+        console.log('[Import] picker asset', {
+          uri: asset.uri,
+          fileName: asset.fileName,
+          duration: asset.duration,
+          type: asset.type,
+          assetId: asset.assetId,
+        });
+      }
       if (asset) {
         const importedVideo = await importLocalVideoAsset(asset);
         const newVideo = await ensureVideoThumbnail(importedVideo);
@@ -116,7 +230,7 @@ export default function HomeScreen() {
       {loading ? (
         <ActivityIndicator size="large" color="#000" style={styles.loader} />
       ) : (
-        <VideoGrid videos={filteredVideos} />
+        <VideoGrid videos={filteredVideos} onViewableItemsChanged={handleViewableItemsChanged} />
       )}
 
       {/* Floating Action Button */}

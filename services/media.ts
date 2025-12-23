@@ -125,7 +125,7 @@ export const importLocalVideoAsset = async (
   const thumbnailUri = await createThumbnailForVideo(sourceUri, id);
 
   const now = Date.now();
-  return {
+  const record: VideoItem = {
     id,
     sourceType: 'local',
     uri: sourceUri,
@@ -136,6 +136,10 @@ export const importLocalVideoAsset = async (
     updatedAt: now,
     duration: asset.duration ? asset.duration / 1000 : 0,
   };
+  if (__DEV__) {
+    console.log('[Import] video record', record);
+  }
+  return record;
 };
 
 export const ensureVideoThumbnail = async (video: VideoItem): Promise<VideoItem> => {

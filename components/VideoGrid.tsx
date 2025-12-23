@@ -1,13 +1,14 @@
 import React from 'react';
-import { FlatList, StyleSheet, useWindowDimensions } from 'react-native';
+import { FlatList, StyleSheet, useWindowDimensions, ViewToken } from 'react-native';
 import { VideoItem } from '../types';
 import VideoTile from './VideoTile';
 
 interface VideoGridProps {
     videos: VideoItem[];
+    onViewableItemsChanged?: (info: { viewableItems: ViewToken[]; changed: ViewToken[] }) => void;
 }
 
-export default function VideoGrid({ videos }: VideoGridProps) {
+export default function VideoGrid({ videos, onViewableItemsChanged }: VideoGridProps) {
     const { width } = useWindowDimensions();
     const numColumns = 3;
     const tileWidth = width / numColumns;
@@ -19,6 +20,8 @@ export default function VideoGrid({ videos }: VideoGridProps) {
             keyExtractor={(item) => item.id}
             numColumns={numColumns}
             contentContainerStyle={styles.container}
+            onViewableItemsChanged={onViewableItemsChanged}
+            viewabilityConfig={onViewableItemsChanged ? { itemVisiblePercentThreshold: 1 } : undefined}
         />
     );
 }
