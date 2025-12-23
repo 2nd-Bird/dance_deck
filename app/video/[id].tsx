@@ -7,8 +7,8 @@ import { AVPlaybackStatus, ResizeMode, Video } from "expo-av";
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import * as ScreenOrientation from 'expo-screen-orientation';
-import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, View } from "react-native";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ActivityIndicator, Alert, KeyboardAvoidingView, PanResponder, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, View } from "react-native";
 import uuid from 'react-native-uuid';
 
 export default function VideoPlayerScreen() {
@@ -38,12 +38,24 @@ export default function VideoPlayerScreen() {
     const [loopStartMillis, setLoopStartMillis] = useState(0);
     const [loopEnabled, setLoopEnabled] = useState(true);
     const [loopBookmarks, setLoopBookmarks] = useState<LoopBookmark[]>([]);
+    const [loopBarWidth, setLoopBarWidth] = useState(0);
+    const loopDragStart = useRef({ loopStart: 0 });
+    const loopDragValue = useRef(0);
+    const loopBarWidthRef = useRef(loopBarWidth);
+    const loopStartRef = useRef(loopStartMillis);
+    const durationRef = useRef(durationMillis);
+    const phaseMillisRef = useRef(phaseMillis);
+    const bpmRef = useRef(bpm);
+    const loopLengthRef = useRef(loopLengthBeats);
+    const loopDurationRef = useRef(0);
+    const loopWindowWidthRef = useRef(0);
 
     // Metadata State (Notes)
     const [memo, setMemo] = useState("");
     const [title, setTitle] = useState("");
     const [tags, setTags] = useState<string[]>([]);
     const [newTag, setNewTag] = useState("");
+    const [availableTags, setAvailableTags] = useState<string[]>([]);
 
     // Save debouncing
     const saveTimeoutRef = useRef<any>(null);
@@ -80,6 +92,11 @@ export default function VideoPlayerScreen() {
             setLoopLengthBeats(found.loopLengthBeats || 8);
             setLoopStartMillis(found.loopStartMillis || 0);
             setLoopBookmarks(found.loopBookmarks || []);
+            const tagSet = new Set<string>();
+            videos.forEach((video) => {
+                (video.tags || []).forEach((tag) => tagSet.add(tag));
+            });
+            setAvailableTags(Array.from(tagSet).sort((a, b) => a.localeCompare(b)));
         } else {
             Alert.alert("Error", "Video not found");
             router.back();
@@ -117,6 +134,7 @@ export default function VideoPlayerScreen() {
     const LOOP_EPSILON_MS = 50;
     const getBeatDuration = () => 60000 / bpm;
     const getLoopDuration = () => getBeatDuration() * loopLengthBeats;
+    const loopDurationMillis = getLoopDuration();
 
     const clampLoopStart = (value: number) => {
         const loopDuration = getLoopDuration();
@@ -124,16 +142,105 @@ export default function VideoPlayerScreen() {
         return Math.min(Math.max(value, 0), maxStart);
     };
 
-    const snapLoopStart = (value: number) => {
-        const beat = getBeatDuration();
-        const beatsFromPhase = Math.round((value - phaseMillis) / beat);
-        const snapped = phaseMillis + beatsFromPhase * beat;
-        return clampLoopStart(snapped);
-    };
-
     useEffect(() => {
         setLoopStartMillis((current) => clampLoopStart(current));
     }, [durationMillis, bpm, loopLengthBeats, phaseMillis]);
+
+    useEffect(() => {
+        loopStartRef.current = loopStartMillis;
+    }, [loopStartMillis]);
+
+    useEffect(() => {
+        loopBarWidthRef.current = loopBarWidth;
+    }, [loopBarWidth]);
+
+    useEffect(() => {
+        durationRef.current = durationMillis;
+    }, [durationMillis]);
+
+    useEffect(() => {
+        phaseMillisRef.current = phaseMillis;
+    }, [phaseMillis]);
+
+    useEffect(() => {
+        bpmRef.current = bpm;
+    }, [bpm]);
+
+    useEffect(() => {
+        loopLengthRef.current = loopLengthBeats;
+    }, [loopLengthBeats]);
+
+    useEffect(() => {
+        loopDurationRef.current = getLoopDuration();
+    }, [bpm, loopLengthBeats]);
+
+    const loopWindowWidth = useMemo(() => {
+        if (!durationMillis || loopBarWidth === 0) return 0;
+        const ratio = loopDurationMillis / durationMillis;
+        if (!Number.isFinite(ratio)) return 0;
+        return Math.min(loopBarWidth, Math.max(24, ratio * loopBarWidth));
+    }, [durationMillis, loopDurationMillis, loopBarWidth]);
+
+    useEffect(() => {
+        loopWindowWidthRef.current = loopWindowWidth;
+    }, [loopWindowWidth]);
+
+    const loopWindowLeft = useMemo(() => {
+        if (!durationMillis || loopBarWidth === 0) return 0;
+        const rawLeft = (loopStartMillis / durationMillis) * loopBarWidth;
+        const maxLeft = Math.max(0, loopBarWidth - loopWindowWidth);
+        return Math.min(Math.max(rawLeft, 0), maxLeft);
+    }, [durationMillis, loopBarWidth, loopStartMillis, loopWindowWidth]);
+
+    const playheadLeft = useMemo(() => {
+        if (!durationMillis || loopBarWidth === 0) return 0;
+        const rawLeft = (positionMillis / durationMillis) * loopBarWidth;
+        return Math.min(Math.max(rawLeft, 0), loopBarWidth);
+    }, [durationMillis, loopBarWidth, positionMillis]);
+
+    const clampLoopStartFromRefs = (value: number) => {
+        const loopDuration = loopDurationRef.current;
+        const maxStart = Math.max(0, durationRef.current - loopDuration);
+        return Math.min(Math.max(value, 0), maxStart);
+    };
+
+    const snapLoopStartFromRefs = (value: number) => {
+        const beat = 60000 / Math.max(1, bpmRef.current);
+        const beatsFromPhase = Math.round((value - phaseMillisRef.current) / beat);
+        const snapped = phaseMillisRef.current + beatsFromPhase * beat;
+        return clampLoopStartFromRefs(snapped);
+    };
+
+    const loopPanResponder = useRef(
+        PanResponder.create({
+            onStartShouldSetPanResponder: () =>
+                durationRef.current > 0 && loopBarWidthRef.current > 0,
+            onMoveShouldSetPanResponder: () =>
+                durationRef.current > 0 && loopBarWidthRef.current > 0,
+            onPanResponderGrant: () => {
+                loopDragStart.current = { loopStart: loopStartRef.current };
+                loopDragValue.current = loopStartRef.current;
+            },
+            onPanResponderMove: (_event, gestureState) => {
+                const barWidth = loopBarWidthRef.current;
+                const duration = durationRef.current;
+                const windowWidth = loopWindowWidthRef.current;
+                if (barWidth <= 0 || duration <= 0) return;
+                const maxLeft = Math.max(0, barWidth - windowWidth);
+                const currentLeft = (loopDragStart.current.loopStart / duration) * barWidth;
+                const nextLeft = Math.min(Math.max(currentLeft + gestureState.dx, 0), maxLeft);
+                const nextStart = clampLoopStartFromRefs((nextLeft / barWidth) * duration);
+                loopDragValue.current = nextStart;
+                setLoopStartMillis(nextStart);
+            },
+            onPanResponderRelease: () => {
+                setLoopStartMillis(snapLoopStartFromRefs(loopDragValue.current));
+            },
+            onPanResponderTerminate: () => {
+                setLoopStartMillis(snapLoopStartFromRefs(loopDragValue.current));
+            },
+        })
+    ).current;
 
 
     const onPlaybackStatusUpdate = (status: AVPlaybackStatus) => {
@@ -187,10 +294,6 @@ export default function VideoPlayerScreen() {
         setPhaseMillis(positionMillis);
     };
 
-    const handleLoopStartChange = (value: number) => {
-        setLoopStartMillis(snapLoopStart(value));
-    };
-
     const handleSaveBookmark = () => {
         if (!durationMillis) {
             Alert.alert("Bookmark Error", "Video duration is not available yet.");
@@ -224,17 +327,34 @@ export default function VideoPlayerScreen() {
     };
 
     // Tag Management
-    const addTag = () => {
-        if (newTag.trim() && !tags.includes(newTag.trim())) {
-            const updatedTags = [...tags, newTag.trim()];
-            setTags(updatedTags);
+    const addTag = (rawTag?: string) => {
+        const candidate = (rawTag ?? newTag).trim().replace(/^#/, "");
+        if (!candidate) return;
+        const normalizedCandidate = candidate.toLowerCase();
+        if (tags.some((tag) => tag.toLowerCase() === normalizedCandidate)) {
             setNewTag("");
+            return;
+        }
+        const updatedTags = [...tags, candidate];
+        setTags(updatedTags);
+        setNewTag("");
+        if (!availableTags.some((tag) => tag.toLowerCase() === normalizedCandidate)) {
+            setAvailableTags((current) =>
+                [...current, candidate].sort((a, b) => a.localeCompare(b))
+            );
         }
     };
 
     const removeTag = (tagToRemove: string) => {
         setTags(tags.filter(t => t !== tagToRemove));
     };
+
+    const tagSuggestions = availableTags.filter((tag) => {
+        const query = newTag.trim().replace(/^#/, "").toLowerCase();
+        if (!query) return false;
+        if (tags.some((existing) => existing.toLowerCase() === tag.toLowerCase())) return false;
+        return tag.toLowerCase().includes(query);
+    }).slice(0, 6);
 
 
     if (loading || !videoItem) {
@@ -250,7 +370,6 @@ export default function VideoPlayerScreen() {
         || videoItem.uri.includes('.mov');
 
     const isLandscape = orientation === ScreenOrientation.Orientation.LANDSCAPE_LEFT || orientation === ScreenOrientation.Orientation.LANDSCAPE_RIGHT;
-    const loopDurationMillis = getLoopDuration();
     const loopEndMillis = loopStartMillis + loopDurationMillis;
 
     return (
@@ -375,9 +494,17 @@ export default function VideoPlayerScreen() {
                                 showsHorizontalScrollIndicator={false}
                                 contentContainerStyle={styles.bookmarkRow}
                             >
-                                <Pressable style={styles.bookmarkTilePrimary} onPress={handleSaveBookmark}>
-                                    <MaterialCommunityIcons name="bookmark-plus" size={22} color="#fff" />
-                                    <Text style={styles.bookmarkTileText}>Save</Text>
+                                <Pressable
+                                    style={[styles.bookmarkTile, styles.bookmarkTilePrimary]}
+                                    onPress={handleSaveBookmark}
+                                >
+                                    <View style={styles.bookmarkTileBody}>
+                                        <MaterialCommunityIcons name="bookmark-plus" size={26} color="#fff" />
+                                        <Text style={styles.bookmarkTileText}>Save</Text>
+                                    </View>
+                                    <View style={styles.bookmarkTileIconOverlay}>
+                                        <MaterialCommunityIcons name="file-video" size={16} color="white" />
+                                    </View>
                                 </Pressable>
                                 {loopBookmarks.map((bookmark) => (
                                     <Pressable
@@ -385,11 +512,16 @@ export default function VideoPlayerScreen() {
                                         style={styles.bookmarkTile}
                                         onPress={() => applyBookmark(bookmark)}
                                     >
-                                        <Text style={styles.bookmarkTileTitle}>{bookmark.loopLengthBeats} counts</Text>
-                                        <Text style={styles.bookmarkTileSub}>{bookmark.bpm} BPM</Text>
-                                        <Text style={styles.bookmarkTileSub}>
-                                            {formatTime(bookmark.loopStartMillis)}
-                                        </Text>
+                                        <View style={styles.bookmarkTileBody}>
+                                            <Text style={styles.bookmarkTileTitle}>{bookmark.loopLengthBeats} counts</Text>
+                                            <Text style={styles.bookmarkTileSub}>{bookmark.bpm} BPM</Text>
+                                            <Text style={styles.bookmarkTileSub}>
+                                                {formatTime(bookmark.loopStartMillis)}
+                                            </Text>
+                                        </View>
+                                        <View style={styles.bookmarkTileIconOverlay}>
+                                            <MaterialCommunityIcons name="file-video" size={16} color="white" />
+                                        </View>
                                     </Pressable>
                                 ))}
                             </ScrollView>
@@ -439,16 +571,25 @@ export default function VideoPlayerScreen() {
                                         {formatTime(loopStartMillis)} - {formatTime(loopEndMillis)}
                                     </Text>
                                 </View>
-                                <Slider
-                                    style={styles.loopSlider}
-                                    minimumValue={0}
-                                    maximumValue={Math.max(0, durationMillis - loopDurationMillis)}
-                                    value={loopStartMillis}
-                                    onSlidingComplete={handleLoopStartChange}
-                                    minimumTrackTintColor="#111"
-                                    maximumTrackTintColor="#ddd"
-                                    thumbTintColor="#111"
-                                />
+                                <View
+                                    style={styles.loopTrack}
+                                    onLayout={(event) => {
+                                        setLoopBarWidth(event.nativeEvent.layout.width);
+                                    }}
+                                    {...loopPanResponder.panHandlers}
+                                >
+                                    <View style={styles.loopTrackBackground} />
+                                    <View
+                                        style={[
+                                            styles.loopWindow,
+                                            {
+                                                width: loopWindowWidth,
+                                                left: loopWindowLeft,
+                                            },
+                                        ]}
+                                    />
+                                    <View style={[styles.loopPlayhead, { left: playheadLeft }]} />
+                                </View>
                             </View>
                         </View>
 
@@ -479,10 +620,23 @@ export default function VideoPlayerScreen() {
                                     placeholder="Add tag..."
                                     value={newTag}
                                     onChangeText={setNewTag}
-                                    onSubmitEditing={addTag}
+                                    onSubmitEditing={() => addTag()}
                                 />
                             </View>
                         </View>
+                        {tagSuggestions.length > 0 && (
+                            <View style={styles.suggestionsRow}>
+                                {tagSuggestions.map((tag) => (
+                                    <Pressable
+                                        key={tag}
+                                        style={styles.suggestionPill}
+                                        onPress={() => addTag(tag)}
+                                    >
+                                        <Text style={styles.suggestionText}>#{tag}</Text>
+                                    </Pressable>
+                                ))}
+                            </View>
+                        )}
 
                         <TextInput
                             style={styles.notesInput}
@@ -668,6 +822,24 @@ const styles = StyleSheet.create({
         fontSize: 12,
         minWidth: 60,
     },
+    suggestionsRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 8,
+        marginTop: -10,
+        marginBottom: 10,
+    },
+    suggestionPill: {
+        backgroundColor: '#eee',
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 12,
+    },
+    suggestionText: {
+        color: '#333',
+        fontSize: 12,
+        fontWeight: '600',
+    },
     notesInput: {
         fontSize: 16,
         lineHeight: 24,
@@ -683,20 +855,20 @@ const styles = StyleSheet.create({
         width: 110,
         height: 110,
         borderRadius: 14,
-        backgroundColor: '#111',
-        padding: 12,
-        justifyContent: 'center',
-        gap: 4,
+        borderWidth: 0.5,
+        borderColor: '#000',
+        backgroundColor: '#333',
+        overflow: 'hidden',
     },
     bookmarkTilePrimary: {
-        width: 110,
-        height: 110,
-        borderRadius: 14,
-        backgroundColor: '#000',
-        padding: 12,
+        backgroundColor: '#111',
+    },
+    bookmarkTileBody: {
+        flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        gap: 6,
+        gap: 4,
+        padding: 12,
     },
     bookmarkTileText: {
         color: '#fff',
@@ -711,6 +883,14 @@ const styles = StyleSheet.create({
     bookmarkTileSub: {
         color: '#bbb',
         fontSize: 11,
+    },
+    bookmarkTileIconOverlay: {
+        position: 'absolute',
+        bottom: 4,
+        right: 4,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        borderRadius: 4,
+        padding: 2,
     },
     bpmRow: {
         flexDirection: 'row',
@@ -783,8 +963,30 @@ const styles = StyleSheet.create({
         color: '#666',
         fontSize: 12,
     },
-    loopSlider: {
+    loopTrack: {
         width: '100%',
-        height: 32,
+        height: 28,
+        borderRadius: 8,
+        overflow: 'hidden',
+        justifyContent: 'center',
+    },
+    loopTrackBackground: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: '#eee',
+        borderRadius: 8,
+    },
+    loopWindow: {
+        position: 'absolute',
+        top: 4,
+        bottom: 4,
+        borderRadius: 6,
+        backgroundColor: 'rgba(17,17,17,0.9)',
+    },
+    loopPlayhead: {
+        position: 'absolute',
+        top: 2,
+        bottom: 2,
+        width: 2,
+        backgroundColor: '#ff3b30',
     },
 });
