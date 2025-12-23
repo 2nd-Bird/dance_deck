@@ -44,6 +44,7 @@ export default function VideoPlayerScreen() {
     const [title, setTitle] = useState("");
     const [tags, setTags] = useState<string[]>([]);
     const [newTag, setNewTag] = useState("");
+    const [availableTags, setAvailableTags] = useState<string[]>([]);
 
     // Save debouncing
     const saveTimeoutRef = useRef<any>(null);
@@ -80,6 +81,11 @@ export default function VideoPlayerScreen() {
             setLoopLengthBeats(found.loopLengthBeats || 8);
             setLoopStartMillis(found.loopStartMillis || 0);
             setLoopBookmarks(found.loopBookmarks || []);
+            const tagSet = new Set<string>();
+            videos.forEach((video) => {
+                (video.tags || []).forEach((tag) => tagSet.add(tag));
+            });
+            setAvailableTags(Array.from(tagSet).sort((a, b) => a.localeCompare(b)));
         } else {
             Alert.alert("Error", "Video not found");
             router.back();
@@ -224,17 +230,34 @@ export default function VideoPlayerScreen() {
     };
 
     // Tag Management
-    const addTag = () => {
-        if (newTag.trim() && !tags.includes(newTag.trim())) {
-            const updatedTags = [...tags, newTag.trim()];
-            setTags(updatedTags);
+    const addTag = (rawTag?: string) => {
+        const candidate = (rawTag ?? newTag).trim().replace(/^#/, "");
+        if (!candidate) return;
+        const normalizedCandidate = candidate.toLowerCase();
+        if (tags.some((tag) => tag.toLowerCase() === normalizedCandidate)) {
             setNewTag("");
+            return;
+        }
+        const updatedTags = [...tags, candidate];
+        setTags(updatedTags);
+        setNewTag("");
+        if (!availableTags.some((tag) => tag.toLowerCase() === normalizedCandidate)) {
+            setAvailableTags((current) =>
+                [...current, candidate].sort((a, b) => a.localeCompare(b))
+            );
         }
     };
 
     const removeTag = (tagToRemove: string) => {
         setTags(tags.filter(t => t !== tagToRemove));
     };
+
+    const tagSuggestions = availableTags.filter((tag) => {
+        const query = newTag.trim().replace(/^#/, "").toLowerCase();
+        if (!query) return false;
+        if (tags.some((existing) => existing.toLowerCase() === tag.toLowerCase())) return false;
+        return tag.toLowerCase().includes(query);
+    }).slice(0, 6);
 
 
     if (loading || !videoItem) {
@@ -479,10 +502,23 @@ export default function VideoPlayerScreen() {
                                     placeholder="Add tag..."
                                     value={newTag}
                                     onChangeText={setNewTag}
-                                    onSubmitEditing={addTag}
+                                    onSubmitEditing={() => addTag()}
                                 />
                             </View>
                         </View>
+                        {tagSuggestions.length > 0 && (
+                            <View style={styles.suggestionsRow}>
+                                {tagSuggestions.map((tag) => (
+                                    <Pressable
+                                        key={tag}
+                                        style={styles.suggestionPill}
+                                        onPress={() => addTag(tag)}
+                                    >
+                                        <Text style={styles.suggestionText}>#{tag}</Text>
+                                    </Pressable>
+                                ))}
+                            </View>
+                        )}
 
                         <TextInput
                             style={styles.notesInput}
@@ -667,6 +703,24 @@ const styles = StyleSheet.create({
         marginLeft: 5,
         fontSize: 12,
         minWidth: 60,
+    },
+    suggestionsRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 8,
+        marginTop: -10,
+        marginBottom: 10,
+    },
+    suggestionPill: {
+        backgroundColor: '#eee',
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 12,
+    },
+    suggestionText: {
+        color: '#333',
+        fontSize: 12,
+        fontWeight: '600',
     },
     notesInput: {
         fontSize: 16,
