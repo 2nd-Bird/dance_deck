@@ -98,3 +98,13 @@ Each acceptance criterion (AC) lists current status, evidence, and how to verify
   - Status: PASS
   - Evidence: No UI or services for SNS/URL/capture in codebase
   - Verify: Review UI; ensure no SNS/URL/capture options exist.
+
+- AC-20 Playback controls show/hide when tapping the video area.
+  - Status: PASS
+  - Evidence: `app/video/[id].tsx` (`controlsVisible`, `handleVideoTap`)
+  - Verify: Tap the video; confirm overlay controls toggle.
+
+- AC-21 Non-destructive editing: original video is not modified; only metadata is stored locally.
+  - Status: PASS
+  - Evidence: `services/storage.ts`, `services/media.ts` (metadata stored; no edit/export pipeline)
+  - Verify: Import a video, edit BPM/tags/memo; confirm no new edited media file is produced.
