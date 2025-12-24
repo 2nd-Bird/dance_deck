@@ -9,7 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, KeyboardAvoidingView, PanResponder, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, KeyboardAvoidingView, PanResponder, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, View, useWindowDimensions } from "react-native";
 import uuid from 'react-native-uuid';
 
 export default function VideoPlayerScreen() {
@@ -30,6 +30,7 @@ export default function VideoPlayerScreen() {
 
     // Orientation State
     const [orientation, setOrientation] = useState(ScreenOrientation.Orientation.PORTRAIT_UP);
+    const { width: windowWidth } = useWindowDimensions();
 
     // Loop & Beat State
     const [bpm, setBpm] = useState(120);
@@ -496,7 +497,7 @@ export default function VideoPlayerScreen() {
         || videoItem.uri.includes('.mov');
 
     const isLandscape = orientation === ScreenOrientation.Orientation.LANDSCAPE_LEFT || orientation === ScreenOrientation.Orientation.LANDSCAPE_RIGHT;
-    const bookmarkTileSize = 110;
+    const bookmarkTileSize = Math.min(140, Math.max(96, windowWidth / 3));
 
     return (
         <View style={styles.container}>
