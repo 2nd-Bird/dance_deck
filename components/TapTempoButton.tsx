@@ -4,12 +4,15 @@ import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
 interface TapTempoButtonProps {
     onSetBpm: (bpm: number) => void;
+    label?: string;
+    tone?: 'light' | 'dark';
 }
 
-export default function TapTempoButton({ onSetBpm }: TapTempoButtonProps) {
+export default function TapTempoButton({ onSetBpm, label = 'Smart Loop', tone = 'light' }: TapTempoButtonProps) {
     const [modalVisible, setModalVisible] = useState(false);
     const [taps, setTaps] = useState<number[]>([]);
     const [bpm, setBpm] = useState<number | null>(null);
+    const triggerColor = tone === 'dark' ? '#111' : 'white';
 
     const handleTap = () => {
         const now = Date.now();
@@ -42,8 +45,8 @@ export default function TapTempoButton({ onSetBpm }: TapTempoButtonProps) {
     return (
         <>
             <Pressable style={styles.triggerBtn} onPress={() => setModalVisible(true)}>
-                <MaterialCommunityIcons name="metronome" size={24} color="white" />
-                <Text style={styles.triggerText}>Smart Loop</Text>
+                <MaterialCommunityIcons name="metronome" size={24} color={triggerColor} />
+                <Text style={[styles.triggerText, { color: triggerColor }]}>{label}</Text>
             </Pressable>
 
             <Modal visible={modalVisible} transparent animationType="fade">
