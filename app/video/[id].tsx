@@ -10,7 +10,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, PanResponder, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, View, useWindowDimensions } from "react-native";
+import { ActivityIndicator, Alert, Animated, Image, KeyboardAvoidingView, LayoutAnimation, PanResponder, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, View, useWindowDimensions } from "react-native";
 import uuid from 'react-native-uuid';
 
 export default function VideoPlayerScreen() {
@@ -28,6 +28,8 @@ export default function VideoPlayerScreen() {
     const [isMirrored, setIsMirrored] = useState(false);
     const [isPlaying, setIsPlaying] = useState(false);
     const [controlsVisible, setControlsVisible] = useState(false);
+    const [overlayVisible, setOverlayVisible] = useState(false);
+    const [skipFeedback, setSkipFeedback] = useState<null | { x: number; y: number; label: string; key: number }>(null);
 
     // Orientation State
     const [orientation, setOrientation] = useState(ScreenOrientation.Orientation.PORTRAIT_UP);
@@ -46,15 +48,29 @@ export default function VideoPlayerScreen() {
     const [scrubPositionMillis, setScrubPositionMillis] = useState(0);
     const [showBpmTools, setShowBpmTools] = useState(false);
     const [timelineThumbs, setTimelineThumbs] = useState<string[]>([]);
+    const DEBUG_TIMELINE_TOUCH = __DEV__;
+    const [debugTouchActive, setDebugTouchActive] = useState({
+        playhead: false,
+        range: false,
+        start: false,
+        end: false,
+    });
     const loopDragStart = useRef({ start: 0, end: 0 });
     const timelineWidthRef = useRef(timelineWidth);
     const playheadDragStart = useRef(0);
     const scrubPositionRef = useRef(0);
     const loopStartRef = useRef(loopStartMillis);
     const durationRef = useRef(durationMillis);
+    const positionRef = useRef(positionMillis);
     const bpmRef = useRef(bpm);
     const loopDurationRef = useRef(0);
     const timelineThumbsKeyRef = useRef("");
+    const overlayOpacity = useRef(new Animated.Value(0)).current;
+    const overlayHideTimeoutRef = useRef<any>(null);
+    const tapTimeoutRef = useRef<any>(null);
+    const lastTapRef = useRef(0);
+    const videoLayoutRef = useRef({ width: 0, height: 0 });
+    const skipFeedbackAnim = useRef(new Animated.Value(0)).current;
 
     // Metadata State (Notes)
     const [memo, setMemo] = useState("");
@@ -65,6 +81,38 @@ export default function VideoPlayerScreen() {
 
     // Save debouncing
     const saveTimeoutRef = useRef<any>(null);
+
+    const setDebugActive = useCallback(
+        (key: "playhead" | "range" | "start" | "end", active: boolean) => {
+            if (!DEBUG_TIMELINE_TOUCH) return;
+            setDebugTouchActive((current) => {
+                if (current[key] === active) return current;
+                return { ...current, [key]: active };
+            });
+        },
+        [DEBUG_TIMELINE_TOUCH]
+    );
+
+    const logTimelineTouch = useCallback(
+        (
+            target: "playhead" | "range" | "start" | "end",
+            phase: "start" | "move" | "end" | "terminate",
+            event?: any,
+            gestureState?: any
+        ) => {
+            if (!DEBUG_TIMELINE_TOUCH) return;
+            const native = event?.nativeEvent;
+            console.log("[TimelineTouch]", {
+                target,
+                phase,
+                x: native?.locationX,
+                y: native?.locationY,
+                dx: gestureState?.dx,
+                dy: gestureState?.dy,
+            });
+        },
+        [DEBUG_TIMELINE_TOUCH]
+    );
 
     const loadVideo = useCallback(async () => {
         const videos = await getVideos();
@@ -173,12 +221,66 @@ export default function VideoPlayerScreen() {
     }, [durationMillis]);
 
     useEffect(() => {
+        positionRef.current = positionMillis;
+    }, [positionMillis]);
+
+    useEffect(() => {
         bpmRef.current = bpm;
     }, [bpm]);
 
     useEffect(() => {
         loopDurationRef.current = getLoopDuration();
     }, [getLoopDuration]);
+
+    useEffect(() => {
+        if (!controlsVisible && overlayVisible) {
+            setOverlayVisible(false);
+        }
+    }, [controlsVisible, overlayVisible]);
+
+    useEffect(() => {
+        Animated.timing(overlayOpacity, {
+            toValue: overlayVisible ? 1 : 0,
+            duration: overlayVisible ? 160 : 220,
+            useNativeDriver: true,
+        }).start();
+    }, [overlayVisible, overlayOpacity]);
+
+    useEffect(() => {
+        if (overlayHideTimeoutRef.current) {
+            clearTimeout(overlayHideTimeoutRef.current);
+            overlayHideTimeoutRef.current = null;
+        }
+        if (!overlayVisible || !isPlaying) return;
+        overlayHideTimeoutRef.current = setTimeout(() => {
+            setOverlayVisible(false);
+        }, 1600);
+        return () => {
+            if (overlayHideTimeoutRef.current) {
+                clearTimeout(overlayHideTimeoutRef.current);
+                overlayHideTimeoutRef.current = null;
+            }
+        };
+    }, [overlayVisible, isPlaying]);
+
+    useEffect(() => {
+        if (!skipFeedback) return;
+        skipFeedbackAnim.setValue(0);
+        Animated.sequence([
+            Animated.timing(skipFeedbackAnim, {
+                toValue: 1,
+                duration: 420,
+                useNativeDriver: true,
+            }),
+            Animated.timing(skipFeedbackAnim, {
+                toValue: 0,
+                duration: 240,
+                useNativeDriver: true,
+            }),
+        ]).start(() => {
+            setSkipFeedback(null);
+        });
+    }, [skipFeedback, skipFeedbackAnim]);
 
     useEffect(() => {
         if (!videoItem?.uri || durationMillis <= 0) return;
@@ -276,23 +378,30 @@ export default function VideoPlayerScreen() {
             onMoveShouldSetPanResponder: () =>
                 durationRef.current > 0 && timelineWidthRef.current > 0,
             onPanResponderGrant: (event) => {
+                logTimelineTouch("playhead", "start", event);
+                setDebugActive("playhead", true);
                 playheadDragStart.current = event.nativeEvent.locationX;
                 const nextPosition = getPositionFromX(playheadDragStart.current);
                 scrubPositionRef.current = nextPosition;
                 setIsScrubbing(true);
                 setScrubPositionMillis(nextPosition);
             },
-            onPanResponderMove: (_event, gestureState) => {
+            onPanResponderMove: (event, gestureState) => {
+                logTimelineTouch("playhead", "move", event, gestureState);
                 const nextX = playheadDragStart.current + gestureState.dx;
                 const nextPosition = getPositionFromX(nextX);
                 scrubPositionRef.current = nextPosition;
                 setScrubPositionMillis(nextPosition);
             },
             onPanResponderRelease: () => {
+                logTimelineTouch("playhead", "end");
+                setDebugActive("playhead", false);
                 setIsScrubbing(false);
                 videoRef.current?.setPositionAsync(scrubPositionRef.current);
             },
             onPanResponderTerminate: () => {
+                logTimelineTouch("playhead", "terminate");
+                setDebugActive("playhead", false);
                 setIsScrubbing(false);
                 videoRef.current?.setPositionAsync(scrubPositionRef.current);
             },
@@ -305,14 +414,17 @@ export default function VideoPlayerScreen() {
                 durationRef.current > 0 && timelineWidthRef.current > 0,
             onMoveShouldSetPanResponder: () =>
                 durationRef.current > 0 && timelineWidthRef.current > 0,
-            onPanResponderGrant: () => {
+            onPanResponderGrant: (event) => {
+                logTimelineTouch("start", "start", event);
+                setDebugActive("start", true);
                 setActiveLoopDrag("start");
                 loopDragStart.current = {
                     start: loopStartRef.current,
                     end: loopStartRef.current + loopDurationRef.current,
                 };
             },
-            onPanResponderMove: (_event, gestureState) => {
+            onPanResponderMove: (event, gestureState) => {
+                logTimelineTouch("start", "move", event, gestureState);
                 const width = timelineWidthRef.current;
                 const duration = durationRef.current;
                 if (width <= 0 || duration <= 0) return;
@@ -326,14 +438,13 @@ export default function VideoPlayerScreen() {
                 setLoopLengthBeats(nextDuration / (60000 / Math.max(1, bpmRef.current)));
             },
             onPanResponderRelease: () => {
+                logTimelineTouch("start", "end");
+                setDebugActive("start", false);
                 setActiveLoopDrag(null);
-                const loopDuration = loopDurationRef.current;
-                const snapped = snapLoopStartToBeat(loopStartRef.current, loopDuration);
-                if (Math.abs(snapped - loopStartRef.current) > 1) {
-                    setLoopStartMillis(snapped);
-                }
             },
             onPanResponderTerminate: () => {
+                logTimelineTouch("start", "terminate");
+                setDebugActive("start", false);
                 setActiveLoopDrag(null);
             },
         })
@@ -345,14 +456,17 @@ export default function VideoPlayerScreen() {
                 durationRef.current > 0 && timelineWidthRef.current > 0,
             onMoveShouldSetPanResponder: () =>
                 durationRef.current > 0 && timelineWidthRef.current > 0,
-            onPanResponderGrant: () => {
+            onPanResponderGrant: (event) => {
+                logTimelineTouch("end", "start", event);
+                setDebugActive("end", true);
                 setActiveLoopDrag("end");
                 loopDragStart.current = {
                     start: loopStartRef.current,
                     end: loopStartRef.current + loopDurationRef.current,
                 };
             },
-            onPanResponderMove: (_event, gestureState) => {
+            onPanResponderMove: (event, gestureState) => {
+                logTimelineTouch("end", "move", event, gestureState);
                 const width = timelineWidthRef.current;
                 const duration = durationRef.current;
                 if (width <= 0 || duration <= 0) return;
@@ -368,9 +482,13 @@ export default function VideoPlayerScreen() {
                 setLoopLengthBeats(nextDuration / (60000 / Math.max(1, bpmRef.current)));
             },
             onPanResponderRelease: () => {
+                logTimelineTouch("end", "end");
+                setDebugActive("end", false);
                 setActiveLoopDrag(null);
             },
             onPanResponderTerminate: () => {
+                logTimelineTouch("end", "terminate");
+                setDebugActive("end", false);
                 setActiveLoopDrag(null);
             },
         })
@@ -382,14 +500,17 @@ export default function VideoPlayerScreen() {
                 durationRef.current > 0 && timelineWidthRef.current > 0,
             onMoveShouldSetPanResponder: () =>
                 durationRef.current > 0 && timelineWidthRef.current > 0,
-            onPanResponderGrant: () => {
+            onPanResponderGrant: (event) => {
+                logTimelineTouch("range", "start", event);
+                setDebugActive("range", true);
                 setActiveLoopDrag("range");
                 loopDragStart.current = {
                     start: loopStartRef.current,
                     end: loopStartRef.current + loopDurationRef.current,
                 };
             },
-            onPanResponderMove: (_event, gestureState) => {
+            onPanResponderMove: (event, gestureState) => {
+                logTimelineTouch("range", "move", event, gestureState);
                 const width = timelineWidthRef.current;
                 const duration = durationRef.current;
                 if (width <= 0 || duration <= 0) return;
@@ -400,9 +521,13 @@ export default function VideoPlayerScreen() {
                 setLoopStartMillis(nextStart);
             },
             onPanResponderRelease: () => {
+                logTimelineTouch("range", "end");
+                setDebugActive("range", false);
                 setActiveLoopDrag(null);
             },
             onPanResponderTerminate: () => {
+                logTimelineTouch("range", "terminate");
+                setDebugActive("range", false);
                 setActiveLoopDrag(null);
             },
         })
@@ -451,8 +576,55 @@ export default function VideoPlayerScreen() {
         return `${display} ${suffix}`;
     };
 
-    const handleVideoTap = () => {
-        setControlsVisible(!controlsVisible);
+    const toggleEditMode = (next: boolean) => {
+        setControlsVisible(next);
+        if (next) {
+            setOverlayVisible(true);
+        }
+    };
+
+    const handleSkipByDoubleTap = (locationX: number, locationY: number) => {
+        const width = videoLayoutRef.current.width || 0;
+        if (!width) return;
+        const isRight = locationX > width / 2;
+        const delta = isRight ? 5000 : -5000;
+        const duration = durationRef.current || 0;
+        const basePosition = positionRef.current || 0;
+        const nextPosition = Math.min(Math.max(basePosition + delta, 0), duration);
+        videoRef.current?.setPositionAsync(nextPosition);
+        setSkipFeedback({
+            x: locationX,
+            y: locationY,
+            label: isRight ? "+5s" : "-5s",
+            key: Date.now(),
+        });
+    };
+
+    const handleVideoSurfacePress = (event: any) => {
+        const now = Date.now();
+        const { locationX, locationY } = event.nativeEvent;
+        if (lastTapRef.current && now - lastTapRef.current < 260) {
+            if (tapTimeoutRef.current) {
+                clearTimeout(tapTimeoutRef.current);
+                tapTimeoutRef.current = null;
+            }
+            lastTapRef.current = 0;
+            handleSkipByDoubleTap(locationX, locationY);
+            return;
+        }
+        lastTapRef.current = now;
+        tapTimeoutRef.current = setTimeout(() => {
+            tapTimeoutRef.current = null;
+            if (!controlsVisible) {
+                toggleEditMode(true);
+                return;
+            }
+            if (controlsVisible && !overlayVisible) {
+                setOverlayVisible(true);
+                return;
+            }
+            toggleEditMode(false);
+        }, 240);
     };
 
     const handleTapTempo = (nextBpm: number) => {
@@ -464,12 +636,15 @@ export default function VideoPlayerScreen() {
     };
 
     const handleSelectLoopLength = (beats: number) => {
+        if (Platform.OS !== "web") {
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        }
         const beatDuration = 60000 / Math.max(1, bpm);
         const loopDuration = beatDuration * beats;
         const safeDuration = durationMillis ? Math.min(loopDuration, durationMillis) : loopDuration;
         const adjustedBeats = safeDuration / beatDuration;
         const basePosition = Number.isFinite(positionMillis) && positionMillis > 0 ? positionMillis : loopStartMillis;
-        const nextStart = clampLoopStartForDuration(basePosition, safeDuration);
+        const nextStart = snapLoopStartToBeat(basePosition, safeDuration);
         setLoopLengthBeats(adjustedBeats);
         setLoopStartMillis(nextStart);
     };
@@ -564,7 +739,16 @@ export default function VideoPlayerScreen() {
 
             {/* TOP: Video Area (Expand in Landscape) */}
             <View style={[styles.videoArea, isLandscape ? styles.videoAreaLandscape : {}]}>
-                <Pressable style={styles.videoWrapper} onPress={handleVideoTap}>
+                <Pressable
+                    style={styles.videoWrapper}
+                    onPress={handleVideoSurfacePress}
+                    onLayout={(event) => {
+                        videoLayoutRef.current = {
+                            width: event.nativeEvent.layout.width,
+                            height: event.nativeEvent.layout.height,
+                        };
+                    }}
+                >
                     {canPlayNative ? (
                         <Video
                             ref={videoRef}
@@ -587,7 +771,10 @@ export default function VideoPlayerScreen() {
 
                     {/* OVERLAY CONTROLS */}
                     {controlsVisible && (
-                        <Pressable style={styles.overlay} onPress={handleVideoTap}>
+                        <Animated.View
+                            style={[styles.overlay, { opacity: overlayOpacity }]}
+                            pointerEvents={overlayVisible ? "box-none" : "none"}
+                        >
                             <LinearGradient
                                 colors={['rgba(0,0,0,0.7)', 'transparent', 'rgba(0,0,0,0.7)']}
                                 style={styles.overlayGradient}
@@ -603,16 +790,8 @@ export default function VideoPlayerScreen() {
 
                                 {/* Middle Row: Play/Pause */}
                                 <View style={styles.middleControlRow}>
-                                    <Pressable onPress={() => videoRef.current?.setPositionAsync(positionMillis - 5000)}>
-                                        <MaterialCommunityIcons name="rewind-5" size={36} color="white" />
-                                    </Pressable>
-
                                     <Pressable onPress={togglePlay} style={styles.bigPlayBtn}>
                                         <MaterialCommunityIcons name={isPlaying ? "pause-circle" : "play-circle"} size={isLandscape ? 60 : 72} color="white" />
-                                    </Pressable>
-
-                                    <Pressable onPress={() => videoRef.current?.setPositionAsync(positionMillis + 5000)}>
-                                        <MaterialCommunityIcons name="fast-forward-5" size={36} color="white" />
                                     </Pressable>
                                 </View>
 
@@ -620,16 +799,18 @@ export default function VideoPlayerScreen() {
                                 <View style={styles.bottomControlContainer}>
                                     <View style={styles.timeRow}>
                                         <Text style={styles.timeText}>{formatTime(positionMillis)}</Text>
-                                        <Slider
-                                            style={styles.slider}
-                                            minimumValue={0}
-                                            maximumValue={durationMillis}
-                                            value={positionMillis}
-                                            onSlidingComplete={(val) => videoRef.current?.setPositionAsync(val)}
-                                            minimumTrackTintColor="#FF0000"
-                                            maximumTrackTintColor="rgba(255,255,255,0.3)"
-                                            thumbTintColor="#FF0000"
-                                        />
+                                        <View style={styles.sliderHitArea}>
+                                            <Slider
+                                                style={styles.slider}
+                                                minimumValue={0}
+                                                maximumValue={durationMillis}
+                                                value={positionMillis}
+                                                onSlidingComplete={(val) => videoRef.current?.setPositionAsync(val)}
+                                                minimumTrackTintColor="#FF0000"
+                                                maximumTrackTintColor="rgba(255,255,255,0.3)"
+                                                thumbTintColor="#FF0000"
+                                            />
+                                        </View>
                                         <Text style={styles.timeText}>{formatTime(durationMillis)}</Text>
                                     </View>
 
@@ -649,9 +830,56 @@ export default function VideoPlayerScreen() {
                                     </View>
                                 </View>
                             </LinearGradient>
-                        </Pressable>
+                        </Animated.View>
+                    )}
+
+                    {skipFeedback && (
+                        <View
+                            pointerEvents="none"
+                            style={[
+                                styles.skipFeedback,
+                                {
+                                    left: skipFeedback.x,
+                                    top: skipFeedback.y,
+                                },
+                            ]}
+                        >
+                            <Animated.View
+                                style={[
+                                    styles.skipRipple,
+                                    {
+                                        opacity: skipFeedbackAnim.interpolate({
+                                            inputRange: [0, 0.6, 1],
+                                            outputRange: [0.7, 0.4, 0],
+                                        }),
+                                        transform: [
+                                            {
+                                                scale: skipFeedbackAnim.interpolate({
+                                                    inputRange: [0, 1],
+                                                    outputRange: [0.35, 1.15],
+                                                }),
+                                            },
+                                        ],
+                                    },
+                                ]}
+                            />
+                            <Animated.Text
+                                style={[
+                                    styles.skipLabel,
+                                    {
+                                        opacity: skipFeedbackAnim.interpolate({
+                                            inputRange: [0, 0.2, 1],
+                                            outputRange: [0, 1, 0],
+                                        }),
+                                    },
+                                ]}
+                            >
+                                {skipFeedback.label}
+                            </Animated.Text>
+                        </View>
                     )}
                 </Pressable>
+
             </View>
 
             {/* BOTTOM: Notes & Metadata Area (Hide in Landscape) */}
@@ -763,11 +991,20 @@ export default function VideoPlayerScreen() {
                                                 <View style={styles.timelineFramesFallback} />
                                             )}
                                         </View>
-                                        <View style={styles.playheadScrubArea} {...playheadPanResponder.panHandlers} />
+                                        <View
+                                            style={[
+                                                styles.playheadScrubArea,
+                                                DEBUG_TIMELINE_TOUCH && styles.playheadScrubAreaDebug,
+                                                debugTouchActive.playhead && styles.playheadScrubAreaActive,
+                                            ]}
+                                            {...playheadPanResponder.panHandlers}
+                                        />
                                         <View
                                             style={[
                                                 styles.loopRange,
                                                 activeLoopDrag && styles.loopRangeActive,
+                                                DEBUG_TIMELINE_TOUCH && styles.loopRangeDebug,
+                                                debugTouchActive.range && styles.loopRangeDebugActive,
                                                 !loopEnabled && styles.loopRangeDisabled,
                                                 {
                                                     left: loopStartLeft,
@@ -781,6 +1018,8 @@ export default function VideoPlayerScreen() {
                                                 styles.loopHandle,
                                                 styles.loopHandleLeft,
                                                 activeLoopDrag === "start" && styles.loopHandleActive,
+                                                DEBUG_TIMELINE_TOUCH && styles.loopHandleDebug,
+                                                debugTouchActive.start && styles.loopHandleDebugActive,
                                                 !loopEnabled && styles.loopHandleDisabled,
                                                 {
                                                     left: Math.max(0, loopStartLeft - LOOP_HANDLE_WIDTH / 2),
@@ -795,6 +1034,8 @@ export default function VideoPlayerScreen() {
                                                 styles.loopHandle,
                                                 styles.loopHandleRight,
                                                 activeLoopDrag === "end" && styles.loopHandleActive,
+                                                DEBUG_TIMELINE_TOUCH && styles.loopHandleDebug,
+                                                debugTouchActive.end && styles.loopHandleDebugActive,
                                                 !loopEnabled && styles.loopHandleDisabled,
                                                 {
                                                     left: Math.min(
@@ -936,6 +1177,7 @@ const styles = StyleSheet.create({
     },
     videoWrapper: {
         flex: 1,
+        overflow: 'hidden',
     },
     video: {
         flex: 1,
@@ -950,6 +1192,32 @@ const styles = StyleSheet.create({
     overlay: {
         ...StyleSheet.absoluteFillObject,
         zIndex: 20,
+    },
+    skipFeedback: {
+        position: 'absolute',
+        width: 120,
+        height: 120,
+        marginLeft: -60,
+        marginTop: -60,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    skipRipple: {
+        position: 'absolute',
+        width: 96,
+        height: 96,
+        borderRadius: 48,
+        borderWidth: 2,
+        borderColor: 'rgba(255,255,255,0.85)',
+        backgroundColor: 'rgba(255,255,255,0.08)',
+    },
+    skipLabel: {
+        color: '#fff',
+        fontWeight: '600',
+        fontSize: 16,
+        textShadowColor: 'rgba(0,0,0,0.6)',
+        textShadowOffset: { width: 0, height: 1 },
+        textShadowRadius: 4,
     },
     overlayGradient: {
         flex: 1,
@@ -992,9 +1260,14 @@ const styles = StyleSheet.create({
         marginBottom: 10,
     },
     slider: {
+        width: '100%',
+        height: 20,
+    },
+    sliderHitArea: {
         flex: 1,
         marginHorizontal: 10,
-        height: 40,
+        paddingVertical: 8,
+        justifyContent: 'center',
     },
     timeText: {
         color: '#ddd',
@@ -1308,10 +1581,19 @@ const styles = StyleSheet.create({
     playheadScrubArea: {
         position: 'absolute',
         top: 0,
+        bottom: 0,
         left: 0,
         right: 0,
-        height: 16,
-        zIndex: 3,
+        zIndex: 1,
+    },
+    playheadScrubAreaDebug: {
+        borderWidth: 1,
+        borderColor: 'rgba(255,59,48,0.45)',
+        backgroundColor: 'rgba(255,59,48,0.08)',
+    },
+    playheadScrubAreaActive: {
+        borderColor: 'rgba(255,59,48,0.9)',
+        backgroundColor: 'rgba(255,59,48,0.18)',
     },
     loopRange: {
         position: 'absolute',
@@ -1321,6 +1603,7 @@ const styles = StyleSheet.create({
         borderWidth: 2,
         borderColor: '#f5c842',
         backgroundColor: 'rgba(245,200,66,0.18)',
+        zIndex: 2,
     },
     loopRangeActive: {
         borderColor: '#f0b429',
@@ -1330,6 +1613,14 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.4,
         shadowRadius: 4,
         elevation: 3,
+    },
+    loopRangeDebug: {
+        borderColor: 'rgba(0,180,255,0.55)',
+        backgroundColor: 'rgba(0,180,255,0.08)',
+    },
+    loopRangeDebugActive: {
+        borderColor: 'rgba(0,180,255,0.95)',
+        backgroundColor: 'rgba(0,180,255,0.18)',
     },
     loopRangeDisabled: {
         opacity: 0.5,
@@ -1346,6 +1637,13 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         zIndex: 4,
+    },
+    loopHandleDebug: {
+        borderColor: '#00b4ff',
+    },
+    loopHandleDebugActive: {
+        borderColor: '#0077a6',
+        backgroundColor: '#ffd769',
     },
     loopHandleLeft: {
         borderTopRightRadius: 6,
@@ -1374,6 +1672,6 @@ const styles = StyleSheet.create({
         bottom: 8,
         width: 2,
         backgroundColor: '#ff3b30',
-        zIndex: 2,
+        zIndex: 3,
     },
 });

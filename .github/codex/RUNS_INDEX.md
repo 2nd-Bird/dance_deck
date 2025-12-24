@@ -9,3 +9,5 @@
 - 20251224_095414: .github/codex/runs/20251224_095414.md
 - 2025-12-24 14:31 | feature/spec-convergence-1 | Loop Controls/Timeline/Loop Bookmarks | ok | show loop UI on tap, add timeline thumbnails
 - 2025-12-24 14:34 | feature/spec-convergence-1 | Loop range snap | ok | snap loop window to beat on release
+2025-12-24 20:21 | feature/spec-convergence-1 | Double-tap skip, overlay fade, persistent controls, seek hit area | ok | added double-tap feedback + overlay auto-fade + scrub padding + range snap
+2025-12-24 21:14 | feature/spec-convergence-2 | Video detail UI/loop presets/timeline scrub | ok | hide persistent controls, beat-snap presets, full-height scrub area
