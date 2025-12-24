@@ -20,13 +20,13 @@ export default function HomeScreen() {
   const hasLoggedViewableItems = useRef(false);
   const pendingImportIds = useRef<Set<string>>(new Set());
 
-  const ensureThumbnails = async (items: VideoItem[]) => {
+  const ensureThumbnails = useCallback(async (items: VideoItem[]) => {
     const updated = await Promise.all(items.map((video) => ensureVideoThumbnail(video)));
     const changed = updated.some((video, index) => video.thumbnailUri !== items[index]?.thumbnailUri);
     return { updated, changed };
-  };
+  }, []);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     const sequence = loadSequence.current + 1;
     loadSequence.current = sequence;
     const startTime = Date.now();
@@ -86,12 +86,12 @@ export default function HomeScreen() {
         setLoading(false);
       }
     }
-  };
+  }, [ensureThumbnails]);
 
   useFocusEffect(
     useCallback(() => {
       loadData();
-    }, [])
+    }, [loadData])
   );
 
   const filteredVideos = useMemo(
