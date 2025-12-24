@@ -3,6 +3,142 @@ Dance Deck
 
 Beat-Synced Loop Player & Video Deck for Dancers
 
+追加仕様2：Video Player UI / Loop UX Improvements（Dance-Focused）
+0. 用語定義（重要・Codexは必ず参照）
+
+Video Surface
+動画そのものが表示される領域。ジェスチャ（タップ／ダブルタップ）の入力対象。
+
+Overlay Controls
+Video Surface 上に一時的に表示される操作UI（Play/Pause 等）。非操作時は非表示が原則。
+
+Persistent Controls
+Overlay が消えても常に表示される操作（Mirror / Speed など）。
+
+Timeline
+動画サムネイルが横方向に連結された編集用タイムライン。
+iOS 写真アプリの動画編集画面と同一のメンタルモデルを前提とする。
+
+Loop Window
+Timeline 上に表示される黄色の矩形フレーム。
+ループ範囲（start–end）を示す。
+
+Loop Handles
+Loop Window の左右端（長さ変更）および中央（位置移動）。
+
+Loop Controls
+Loop On/Off、Loop Length（counts/eights）など、ループ挙動を制御する UI 群。
+
+1. UX 設計の上位原則（最重要）
+
+本アプリは ストリートダンサーの反復練習を主用途とするため、
+以下を UI 実装の最優先原則とする。
+
+認知負荷ゼロ
+→ 見ただけで「押せる／動かせる」が分かる
+
+操作手数の最小化
+→ ボタン探索を不要にし、ジェスチャ中心
+
+メンタルモデルの流用
+→ YouTube / Instagram / iOS 写真アプリと同じ操作感
+
+映像の遮蔽最小化（Occlusion Avoidance）
+→ 振付確認を UI が邪魔しない
+
+2. Video Surface / Overlay Controls
+2.1 Skip（±5s）
+項目	内容
+Current	画面左右に回転矢印アイコンを配置
+Proposed	アイコンを完全に廃止し、ダブルタップジェスチャに変更
+Behavior	右側ダブルタップ → +5s（将来的に +1 eight 可）
+左側ダブルタップ → −5s
+Feedback	タップ位置に波紋（Ripple）＋「+5s / −5s」テキストを一瞬表示
+Rationale	YouTube / Instagram で確立されたメンタルモデル。「探さずに叩く」
+2.2 Play / Pause
+
+| Current | 中央に常駐 |
+| Proposed | 操作時のみ表示。再生中は自動フェードアウト |
+| Rationale | iOS 写真 / YouTube：振付の視認性を最優先 |
+
+2.3 Mirror / Speed
+
+| Current | 動画下部に配置 |
+| Proposed | 配置は維持。ただし視認性を強化（影・コントラスト） |
+| Rule | Overlay が消える時の扱いを統一：<br>① 常時表示 もしくは ② タップで再表示 |
+| Rationale | TikTok / Instagram：頻繁に使う調整系は即アクセス可能 |
+
+3. Progress Bar（再生位置）
+
+| Current | 細い線＋赤ドット |
+| Proposed | 見た目は細く、タップ判定は太く |
+| Implementation Note | hitSlop / invisible padding を使用 |
+| Rationale | iOS Music / YouTube：汗ばんだ手でも誤操作しない |
+
+4. Loop & Timeline（中核）
+4.1 Timeline Visual
+
+Timeline は 動画サムネイルの連結ストリップで構成する
+
+iOS 写真アプリの動画編集 UI を そのままメンタルモデルとして採用
+
+4.2 Loop Window（黄色枠）
+
+| Current | iOS風黄色枠 |
+| Decision | 現状維持（非常に良い） |
+| Clarification | 中央ドラッグ：長さ固定で位置移動<br>左右ドラッグ：長さ変更 |
+| Rationale | iOS 写真アプリ準拠で学習コスト最小 |
+
+4.3 Loop On / Off
+
+| Current | 黒い「Loop On」バッジ |
+| Proposed | トグル化、または Timeline 左端にリピートアイコンとして統合 |
+| Rationale | ステータス表示に見える問題を解消。iOS Music の Repeat アイコン準拠 |
+
+4.4 Loop Length（counts / eights）
+
+| Current | 白いピル型ボタン |
+| Proposed | Timeline 直上に配置し、タップ即反映 |
+| Animation | 押下時、Loop Window がその長さにリサイズされる |
+| Rationale | CapCut / Video Leap：操作対象と設定は近接配置 |
+
+5. Loop Length 表記ルール（ダンス文化準拠）
+用語調査結果（結論）
+
+アメリカのストリートダンス／ヒップホップ現場でも
+8 counts = “one eight”
+16 counts = “two eights”
+という表現は 一般的に使用される
+
+特に choreographer / rehearsal 文脈で定着
+
+表記ルール
+Length	Label
+≤4 counts	“4 counts”
+8 counts	“1 eight”
+16 counts	“2 eights”
+32 counts	“4 eights”
+6. Loop Bookmarks
+
+| Current | サムネイル + BPM + Length |
+| Proposed | Length のみ表示（eights/counts） |
+| Rationale | ダンスミュージックは原則 BPM 一定。冗長情報を排除 |
+
+7. 情報階層（最終）
+通常時（Overlay 非表示）
+[ Video Surface ]
+[ Loop Bookmarks ]
+[ Metadata (Tags, Memo) ]
+
+動画タップ時（編集モード）
+[ Video Surface ]
+[ Loop Controls ]
+[ Timeline + Loop Window ]
+[ Loop Bookmarks ]
+[ Metadata ]
+
+以上追加仕様3
+
 追加仕様2：Loop / Timeline UI & Interaction
 用語定義（重要・Codex厳守）
 
