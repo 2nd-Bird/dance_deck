@@ -7,3 +7,5 @@
 - 20251224_094918: .github/codex/runs/20251224_094918.md
 - 20251224_095156: .github/codex/runs/20251224_095156.md
 - 20251224_095414: .github/codex/runs/20251224_095414.md
+- 2025-12-24 14:31 | feature/spec-convergence-1 | Loop Controls/Timeline/Loop Bookmarks | ok | show loop UI on tap, add timeline thumbnails
+- 2025-12-24 14:34 | feature/spec-convergence-1 | Loop range snap | ok | snap loop window to beat on release
