@@ -6,7 +6,6 @@ import React from 'react';
 // but usually we can import if we trust the template.
 // To be safe and fast, I will define colors here or use hardcoded.
 const tintColorLight = '#2f95dc';
-const tintColorDark = '#fff';
 
 function TabBarIcon(props: {
   name: React.ComponentProps<typeof FontAwesome>['name'];
