@@ -8,7 +8,7 @@ import { AVPlaybackStatus, ResizeMode, Video } from "expo-av";
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import * as ScreenOrientation from 'expo-screen-orientation';
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Alert, KeyboardAvoidingView, PanResponder, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, View } from "react-native";
 import uuid from 'react-native-uuid';
 
@@ -62,26 +62,7 @@ export default function VideoPlayerScreen() {
     // Save debouncing
     const saveTimeoutRef = useRef<any>(null);
 
-    useEffect(() => {
-        loadVideo();
-    }, [id]);
-
-    useEffect(() => {
-        // Allow rotation for this screen
-        ScreenOrientation.unlockAsync();
-
-        const subscription = ScreenOrientation.addOrientationChangeListener((evt) => {
-            setOrientation(evt.orientationInfo.orientation);
-        });
-
-        return () => {
-            ScreenOrientation.removeOrientationChangeListener(subscription);
-            // Lock back to portrait on exit
-            ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
-        };
-    }, []);
-
-    const loadVideo = async () => {
+    const loadVideo = useCallback(async () => {
         const videos = await getVideos();
         const found = videos.find(v => v.id === id);
         if (found) {
@@ -104,7 +85,26 @@ export default function VideoPlayerScreen() {
             router.back();
         }
         setLoading(false);
-    };
+    }, [id, router]);
+
+    useEffect(() => {
+        loadVideo();
+    }, [loadVideo]);
+
+    useEffect(() => {
+        // Allow rotation for this screen
+        ScreenOrientation.unlockAsync();
+
+        const subscription = ScreenOrientation.addOrientationChangeListener((evt) => {
+            setOrientation(evt.orientationInfo.orientation);
+        });
+
+        return () => {
+            ScreenOrientation.removeOrientationChangeListener(subscription);
+            // Lock back to portrait on exit
+            ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+        };
+    }, []);
 
     // Auto-Save Logic
     useEffect(() => {
@@ -131,24 +131,30 @@ export default function VideoPlayerScreen() {
         return () => {
             if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
         };
-    }, [memo, title, tags, bpm, phaseMillis, loopLengthBeats, loopStartMillis, loopBookmarks]);
+    }, [memo, title, tags, bpm, phaseMillis, loopLengthBeats, loopStartMillis, loopBookmarks, videoItem]);
 
     const LOOP_EPSILON_MS = 50;
     const LOOP_HANDLE_WIDTH = 24;
-    const getBeatDuration = () => 60000 / bpm;
-    const getLoopDuration = () => getBeatDuration() * loopLengthBeats;
+    const getBeatDuration = useCallback(() => 60000 / bpm, [bpm]);
+    const getLoopDuration = useCallback(
+        () => getBeatDuration() * loopLengthBeats,
+        [getBeatDuration, loopLengthBeats]
+    );
     const loopDurationMillis = getLoopDuration();
     const loopEndMillis = loopStartMillis + loopDurationMillis;
 
-    const clampLoopStart = (value: number) => {
-        const loopDuration = getLoopDuration();
-        const maxStart = Math.max(0, durationMillis - loopDuration);
-        return Math.min(Math.max(value, 0), maxStart);
-    };
+    const clampLoopStart = useCallback(
+        (value: number) => {
+            const loopDuration = getLoopDuration();
+            const maxStart = Math.max(0, durationMillis - loopDuration);
+            return Math.min(Math.max(value, 0), maxStart);
+        },
+        [durationMillis, getLoopDuration]
+    );
 
     useEffect(() => {
         setLoopStartMillis((current) => clampLoopStart(current));
-    }, [durationMillis, bpm, loopLengthBeats, phaseMillis]);
+    }, [clampLoopStart, durationMillis, bpm, loopLengthBeats, phaseMillis]);
 
     useEffect(() => {
         loopStartRef.current = loopStartMillis;
@@ -168,7 +174,7 @@ export default function VideoPlayerScreen() {
 
     useEffect(() => {
         loopDurationRef.current = getLoopDuration();
-    }, [bpm, loopLengthBeats]);
+    }, [getLoopDuration]);
 
     const getMinLoopDurationFromRefs = () => {
         const duration = durationRef.current;
