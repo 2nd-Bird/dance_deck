@@ -3,6 +3,132 @@ Dance Deck
 
 Beat-Synced Loop Player & Video Deck for Dancers
 
+追加仕様2：Loop / Timeline UI & Interaction
+用語定義（重要・Codex厳守）
+
+Video View
+動画が再生されるメイン領域（フル幅、アスペクト比維持）
+
+Overlay Controls
+Video View 上に重ねて表示される再生UI（再生/停止など）
+
+Timeline
+動画の時間軸を示すUI。
+動画サムネイル（フレーム画像）が横に連続した見た目で構成される。
+
+Loop Frame（Loop Range）
+Timeline 上に表示される 黄色い矩形の囲い。
+ループ再生される範囲を示す。
+
+Loop Controls
+Loop ON/OFF ボタン、および Loop Length（長さ）選択ボタン群。
+
+Loop Bookmarks
+保存されたループの一覧。
+Home の Library Tile と同一デザインのタイルUIを用いる。
+
+Metadata
+タグ、メモ等の動画付随情報。
+
+Timeline の見た目仕様
+
+Timeline は iOS標準の写真アプリで動画編集を開いた時のUIと同等の視覚構造を持つこと。
+
+動画フレーム（サムネイル）が横方向に連続した帯状UI
+
+フレームは「単色バー」ではなく 動画サムネイルの接続であること。
+
+Loop Frame（黄色い囲い）の仕様
+
+Loop Frame は Timeline 内のサムネイル帯をちょうど囲う高さ・位置を持つこと。
+
+Loop Frame の横幅は 選択された Loop Length に正確に対応すること。
+
+Loop Frame は以下の操作を持つ：
+
+左右ハンドルによる開始・終了位置の調整
+
+フレーム全体のドラッグによる横移動（長さは保持）
+
+表示条件（非常に重要）
+
+Loop Controls および Timeline は常時表示しない
+
+通常状態（動画未タップ時）
+
+表示順：
+
+Video View
+
+Loop Bookmarks
+
+Metadata
+
+👉 Video View の直下に Loop / Timeline は存在しない
+
+動画タップ時（操作モード）
+
+動画をタップすると Overlay Controls が表示される
+
+同時に Loop Controls + Timeline が表示される
+
+表示順：
+
+Video View
+
+Loop Controls
+
+Timeline
+
+Loop Bookmarks
+
+Metadata
+
+再度 Video View をタップすると：
+
+Overlay Controls
+
+Loop Controls
+
+Timeline
+がすべて非表示になり、通常状態に戻る
+
+Loop Bookmarks の表示内容
+
+Loop Bookmark タイルには以下を表示する：
+
+動画サムネイル
+
+ループ長（例：2 eights）
+
+BPM 表示は行わない
+
+理由：本アプリは BPMが曲全体で一定なダンスミュージックを前提とするため
+
+Loop Length 表記仕様（国際対応）
+
+Loop Length は counts ではなく eights 単位で表記する。
+
+実際の長さ	表示
+4 counts	4 counts
+8 counts	1 eight
+16 counts	2 eights
+32 counts	4 eights
+
+8 counts 以上は eights 表記を優先
+
+4 counts 以下は従来通り counts 表記で可
+
+Codex向けの補足（意図）
+
+本仕様は ダンス現場（日本／US）の実用語彙を優先している
+
+見た目・操作は iOS ネイティブの成功事例を明示的に模倣する
+
+Loop / Timeline は「編集モード的UI」であり、常駐UIではない
+
+ここまで追加仕様2
+
 追加仕様：Video Detail（再生・Loop編集画面）UI/UX 再設計
 
 本アプリの Video Detail 画面は、
