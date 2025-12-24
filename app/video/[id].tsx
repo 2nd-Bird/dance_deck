@@ -1,3 +1,4 @@
+import LibraryTile from "@/components/LibraryTile";
 import TapTempoButton from "@/components/TapTempoButton";
 import { getVideos, updateVideo } from "@/services/storage";
 import { LoopBookmark, VideoItem } from "@/types";
@@ -20,13 +21,12 @@ export default function VideoPlayerScreen() {
     const [loading, setLoading] = useState(true);
 
     // Playback State
-    const [status, setStatus] = useState<AVPlaybackStatus | null>(null);
     const [positionMillis, setPositionMillis] = useState(0);
     const [durationMillis, setDurationMillis] = useState(0);
     const [rate, setRate] = useState(1.0);
     const [isMirrored, setIsMirrored] = useState(false);
     const [isPlaying, setIsPlaying] = useState(false);
-    const [controlsVisible, setControlsVisible] = useState(true);
+    const [controlsVisible, setControlsVisible] = useState(false);
 
     // Orientation State
     const [orientation, setOrientation] = useState(ScreenOrientation.Orientation.PORTRAIT_UP);
@@ -38,17 +38,19 @@ export default function VideoPlayerScreen() {
     const [loopStartMillis, setLoopStartMillis] = useState(0);
     const [loopEnabled, setLoopEnabled] = useState(true);
     const [loopBookmarks, setLoopBookmarks] = useState<LoopBookmark[]>([]);
-    const [loopBarWidth, setLoopBarWidth] = useState(0);
-    const loopDragStart = useRef({ loopStart: 0 });
-    const loopDragValue = useRef(0);
-    const loopBarWidthRef = useRef(loopBarWidth);
+    const [timelineWidth, setTimelineWidth] = useState(0);
+    const [activeLoopDrag, setActiveLoopDrag] = useState<null | "start" | "end" | "range">(null);
+    const [isScrubbing, setIsScrubbing] = useState(false);
+    const [scrubPositionMillis, setScrubPositionMillis] = useState(0);
+    const [showBpmTools, setShowBpmTools] = useState(false);
+    const loopDragStart = useRef({ start: 0, end: 0 });
+    const timelineWidthRef = useRef(timelineWidth);
+    const playheadDragStart = useRef(0);
+    const scrubPositionRef = useRef(0);
     const loopStartRef = useRef(loopStartMillis);
     const durationRef = useRef(durationMillis);
-    const phaseMillisRef = useRef(phaseMillis);
     const bpmRef = useRef(bpm);
-    const loopLengthRef = useRef(loopLengthBeats);
     const loopDurationRef = useRef(0);
-    const loopWindowWidthRef = useRef(0);
 
     // Metadata State (Notes)
     const [memo, setMemo] = useState("");
@@ -132,9 +134,11 @@ export default function VideoPlayerScreen() {
     }, [memo, title, tags, bpm, phaseMillis, loopLengthBeats, loopStartMillis, loopBookmarks]);
 
     const LOOP_EPSILON_MS = 50;
+    const LOOP_HANDLE_WIDTH = 24;
     const getBeatDuration = () => 60000 / bpm;
     const getLoopDuration = () => getBeatDuration() * loopLengthBeats;
     const loopDurationMillis = getLoopDuration();
+    const loopEndMillis = loopStartMillis + loopDurationMillis;
 
     const clampLoopStart = (value: number) => {
         const loopDuration = getLoopDuration();
@@ -151,93 +155,193 @@ export default function VideoPlayerScreen() {
     }, [loopStartMillis]);
 
     useEffect(() => {
-        loopBarWidthRef.current = loopBarWidth;
-    }, [loopBarWidth]);
+        timelineWidthRef.current = timelineWidth;
+    }, [timelineWidth]);
 
     useEffect(() => {
         durationRef.current = durationMillis;
     }, [durationMillis]);
 
     useEffect(() => {
-        phaseMillisRef.current = phaseMillis;
-    }, [phaseMillis]);
-
-    useEffect(() => {
         bpmRef.current = bpm;
     }, [bpm]);
-
-    useEffect(() => {
-        loopLengthRef.current = loopLengthBeats;
-    }, [loopLengthBeats]);
 
     useEffect(() => {
         loopDurationRef.current = getLoopDuration();
     }, [bpm, loopLengthBeats]);
 
-    const loopWindowWidth = useMemo(() => {
-        if (!durationMillis || loopBarWidth === 0) return 0;
-        const ratio = loopDurationMillis / durationMillis;
-        if (!Number.isFinite(ratio)) return 0;
-        return Math.min(loopBarWidth, Math.max(24, ratio * loopBarWidth));
-    }, [durationMillis, loopDurationMillis, loopBarWidth]);
+    const getMinLoopDurationFromRefs = () => {
+        const duration = durationRef.current;
+        if (duration <= 0) return 0;
+        const beat = 60000 / Math.max(1, bpmRef.current);
+        return Math.min(duration, Math.max(250, beat * 0.5));
+    };
 
-    useEffect(() => {
-        loopWindowWidthRef.current = loopWindowWidth;
-    }, [loopWindowWidth]);
-
-    const loopWindowLeft = useMemo(() => {
-        if (!durationMillis || loopBarWidth === 0) return 0;
-        const rawLeft = (loopStartMillis / durationMillis) * loopBarWidth;
-        const maxLeft = Math.max(0, loopBarWidth - loopWindowWidth);
-        return Math.min(Math.max(rawLeft, 0), maxLeft);
-    }, [durationMillis, loopBarWidth, loopStartMillis, loopWindowWidth]);
-
-    const playheadLeft = useMemo(() => {
-        if (!durationMillis || loopBarWidth === 0) return 0;
-        const rawLeft = (positionMillis / durationMillis) * loopBarWidth;
-        return Math.min(Math.max(rawLeft, 0), loopBarWidth);
-    }, [durationMillis, loopBarWidth, positionMillis]);
-
-    const clampLoopStartFromRefs = (value: number) => {
-        const loopDuration = loopDurationRef.current;
-        const maxStart = Math.max(0, durationRef.current - loopDuration);
+    const clampLoopStartForDuration = (value: number, loopDuration: number) => {
+        const maxStart = Math.max(0, durationMillis - loopDuration);
         return Math.min(Math.max(value, 0), maxStart);
     };
 
-    const snapLoopStartFromRefs = (value: number) => {
-        const beat = 60000 / Math.max(1, bpmRef.current);
-        const beatsFromPhase = Math.round((value - phaseMillisRef.current) / beat);
-        const snapped = phaseMillisRef.current + beatsFromPhase * beat;
-        return clampLoopStartFromRefs(snapped);
+    const getPositionFromX = (x: number) => {
+        const width = timelineWidthRef.current;
+        const duration = durationRef.current;
+        if (width <= 0 || duration <= 0) return 0;
+        const clamped = Math.min(Math.max(x, 0), width);
+        return (clamped / width) * duration;
     };
 
-    const loopPanResponder = useRef(
+    const displayPositionMillis = isScrubbing ? scrubPositionMillis : positionMillis;
+
+    const playheadLeft = useMemo(() => {
+        if (!durationMillis || timelineWidth === 0) return 0;
+        const rawLeft = (displayPositionMillis / durationMillis) * timelineWidth;
+        return Math.min(Math.max(rawLeft, 0), timelineWidth);
+    }, [durationMillis, timelineWidth, displayPositionMillis]);
+
+    const loopStartLeft = useMemo(() => {
+        if (!durationMillis || timelineWidth === 0) return 0;
+        const rawLeft = (loopStartMillis / durationMillis) * timelineWidth;
+        return Math.min(Math.max(rawLeft, 0), timelineWidth);
+    }, [durationMillis, timelineWidth, loopStartMillis]);
+
+    const loopEndLeft = useMemo(() => {
+        if (!durationMillis || timelineWidth === 0) return 0;
+        const rawLeft = (loopEndMillis / durationMillis) * timelineWidth;
+        return Math.min(Math.max(rawLeft, 0), timelineWidth);
+    }, [durationMillis, timelineWidth, loopEndMillis]);
+
+    const loopRangeWidth = Math.max(0, loopEndLeft - loopStartLeft);
+
+    const playheadPanResponder = useRef(
         PanResponder.create({
             onStartShouldSetPanResponder: () =>
-                durationRef.current > 0 && loopBarWidthRef.current > 0,
+                durationRef.current > 0 && timelineWidthRef.current > 0,
             onMoveShouldSetPanResponder: () =>
-                durationRef.current > 0 && loopBarWidthRef.current > 0,
-            onPanResponderGrant: () => {
-                loopDragStart.current = { loopStart: loopStartRef.current };
-                loopDragValue.current = loopStartRef.current;
+                durationRef.current > 0 && timelineWidthRef.current > 0,
+            onPanResponderGrant: (event) => {
+                playheadDragStart.current = event.nativeEvent.locationX;
+                const nextPosition = getPositionFromX(playheadDragStart.current);
+                scrubPositionRef.current = nextPosition;
+                setIsScrubbing(true);
+                setScrubPositionMillis(nextPosition);
             },
             onPanResponderMove: (_event, gestureState) => {
-                const barWidth = loopBarWidthRef.current;
+                const nextX = playheadDragStart.current + gestureState.dx;
+                const nextPosition = getPositionFromX(nextX);
+                scrubPositionRef.current = nextPosition;
+                setScrubPositionMillis(nextPosition);
+            },
+            onPanResponderRelease: () => {
+                setIsScrubbing(false);
+                videoRef.current?.setPositionAsync(scrubPositionRef.current);
+            },
+            onPanResponderTerminate: () => {
+                setIsScrubbing(false);
+                videoRef.current?.setPositionAsync(scrubPositionRef.current);
+            },
+        })
+    ).current;
+
+    const loopStartPanResponder = useRef(
+        PanResponder.create({
+            onStartShouldSetPanResponder: () =>
+                durationRef.current > 0 && timelineWidthRef.current > 0,
+            onMoveShouldSetPanResponder: () =>
+                durationRef.current > 0 && timelineWidthRef.current > 0,
+            onPanResponderGrant: () => {
+                setActiveLoopDrag("start");
+                loopDragStart.current = {
+                    start: loopStartRef.current,
+                    end: loopStartRef.current + loopDurationRef.current,
+                };
+            },
+            onPanResponderMove: (_event, gestureState) => {
+                const width = timelineWidthRef.current;
                 const duration = durationRef.current;
-                const windowWidth = loopWindowWidthRef.current;
-                if (barWidth <= 0 || duration <= 0) return;
-                const maxLeft = Math.max(0, barWidth - windowWidth);
-                const currentLeft = (loopDragStart.current.loopStart / duration) * barWidth;
-                const nextLeft = Math.min(Math.max(currentLeft + gestureState.dx, 0), maxLeft);
-                const nextStart = clampLoopStartFromRefs((nextLeft / barWidth) * duration);
-                loopDragValue.current = nextStart;
+                if (width <= 0 || duration <= 0) return;
+                const delta = (gestureState.dx / width) * duration;
+                const minDuration = getMinLoopDurationFromRefs();
+                const end = loopDragStart.current.end;
+                const nextStart = loopDragStart.current.start + delta;
+                const clampedStart = Math.min(Math.max(nextStart, 0), Math.max(0, end - minDuration));
+                const nextDuration = Math.max(minDuration, end - clampedStart);
+                setLoopStartMillis(clampedStart);
+                setLoopLengthBeats(nextDuration / (60000 / Math.max(1, bpmRef.current)));
+            },
+            onPanResponderRelease: () => {
+                setActiveLoopDrag(null);
+            },
+            onPanResponderTerminate: () => {
+                setActiveLoopDrag(null);
+            },
+        })
+    ).current;
+
+    const loopEndPanResponder = useRef(
+        PanResponder.create({
+            onStartShouldSetPanResponder: () =>
+                durationRef.current > 0 && timelineWidthRef.current > 0,
+            onMoveShouldSetPanResponder: () =>
+                durationRef.current > 0 && timelineWidthRef.current > 0,
+            onPanResponderGrant: () => {
+                setActiveLoopDrag("end");
+                loopDragStart.current = {
+                    start: loopStartRef.current,
+                    end: loopStartRef.current + loopDurationRef.current,
+                };
+            },
+            onPanResponderMove: (_event, gestureState) => {
+                const width = timelineWidthRef.current;
+                const duration = durationRef.current;
+                if (width <= 0 || duration <= 0) return;
+                const delta = (gestureState.dx / width) * duration;
+                const minDuration = getMinLoopDurationFromRefs();
+                const start = loopDragStart.current.start;
+                const nextEnd = loopDragStart.current.end + delta;
+                const clampedEnd = Math.min(
+                    Math.max(nextEnd, start + minDuration),
+                    duration
+                );
+                const nextDuration = Math.max(minDuration, clampedEnd - start);
+                setLoopLengthBeats(nextDuration / (60000 / Math.max(1, bpmRef.current)));
+            },
+            onPanResponderRelease: () => {
+                setActiveLoopDrag(null);
+            },
+            onPanResponderTerminate: () => {
+                setActiveLoopDrag(null);
+            },
+        })
+    ).current;
+
+    const loopRangePanResponder = useRef(
+        PanResponder.create({
+            onStartShouldSetPanResponder: () =>
+                durationRef.current > 0 && timelineWidthRef.current > 0,
+            onMoveShouldSetPanResponder: () =>
+                durationRef.current > 0 && timelineWidthRef.current > 0,
+            onPanResponderGrant: () => {
+                setActiveLoopDrag("range");
+                loopDragStart.current = {
+                    start: loopStartRef.current,
+                    end: loopStartRef.current + loopDurationRef.current,
+                };
+            },
+            onPanResponderMove: (_event, gestureState) => {
+                const width = timelineWidthRef.current;
+                const duration = durationRef.current;
+                if (width <= 0 || duration <= 0) return;
+                const delta = (gestureState.dx / width) * duration;
+                const length = loopDragStart.current.end - loopDragStart.current.start;
+                let nextStart = loopDragStart.current.start + delta;
+                nextStart = Math.min(Math.max(nextStart, 0), Math.max(0, duration - length));
                 setLoopStartMillis(nextStart);
             },
             onPanResponderRelease: () => {
-                setLoopStartMillis(snapLoopStartFromRefs(loopDragValue.current));
+                setActiveLoopDrag(null);
             },
             onPanResponderTerminate: () => {
-                setLoopStartMillis(snapLoopStartFromRefs(loopDragValue.current));
+                setActiveLoopDrag(null);
             },
         })
     ).current;
@@ -245,7 +349,6 @@ export default function VideoPlayerScreen() {
 
     const onPlaybackStatusUpdate = (status: AVPlaybackStatus) => {
         if (!status.isLoaded) return;
-        setStatus(status);
         setPositionMillis(status.positionMillis);
         setDurationMillis(status.durationMillis || 0);
         setIsPlaying(status.isPlaying);
@@ -269,6 +372,12 @@ export default function VideoPlayerScreen() {
         return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
     };
 
+    const formatCounts = (beats: number) => {
+        const rounded = Math.round(beats);
+        if (Math.abs(beats - rounded) < 0.05) return `${rounded}`;
+        return beats.toFixed(1);
+    };
+
     // Overlay Visibility Logic
     useEffect(() => {
         let timeout: any;
@@ -288,6 +397,17 @@ export default function VideoPlayerScreen() {
 
     const adjustBpm = (delta: number) => {
         setBpm((current) => Math.max(20, current + delta));
+    };
+
+    const handleSelectLoopLength = (beats: number) => {
+        const beatDuration = 60000 / Math.max(1, bpm);
+        const loopDuration = beatDuration * beats;
+        const safeDuration = durationMillis ? Math.min(loopDuration, durationMillis) : loopDuration;
+        const adjustedBeats = safeDuration / beatDuration;
+        const basePosition = Number.isFinite(positionMillis) && positionMillis > 0 ? positionMillis : loopStartMillis;
+        const nextStart = clampLoopStartForDuration(basePosition, safeDuration);
+        setLoopLengthBeats(adjustedBeats);
+        setLoopStartMillis(nextStart);
     };
 
     const handleSetPhase = () => {
@@ -370,7 +490,7 @@ export default function VideoPlayerScreen() {
         || videoItem.uri.includes('.mov');
 
     const isLandscape = orientation === ScreenOrientation.Orientation.LANDSCAPE_LEFT || orientation === ScreenOrientation.Orientation.LANDSCAPE_RIGHT;
-    const loopEndMillis = loopStartMillis + loopDurationMillis;
+    const bookmarkTileSize = 110;
 
     return (
         <View style={styles.container}>
@@ -467,11 +587,6 @@ export default function VideoPlayerScreen() {
                                             <MaterialCommunityIcons name={loopEnabled ? "repeat" : "repeat-off"} size={24} color={loopEnabled ? "#FF0000" : "white"} />
                                             <Text style={styles.toolText}>Loop</Text>
                                         </Pressable>
-
-                                        {/* Tap Tempo */}
-                                        <View style={styles.toolItem}>
-                                            <TapTempoButton onSetBpm={handleTapTempo} />
-                                        </View>
                                     </View>
                                 </View>
                             </LinearGradient>
@@ -488,164 +603,215 @@ export default function VideoPlayerScreen() {
                 >
                     <ScrollView contentContainerStyle={styles.notesContent}>
                         <View style={styles.section}>
+                            <View style={styles.sectionHeader}>
+                                <Text style={styles.sectionTitle}>Loop</Text>
+                                <Pressable
+                                    style={styles.bpmToggle}
+                                    onPress={() => setShowBpmTools((current) => !current)}
+                                >
+                                    <MaterialCommunityIcons name="metronome" size={16} color="#111" />
+                                    <Text style={styles.bpmToggleText}>{bpm} BPM</Text>
+                                    <MaterialCommunityIcons
+                                        name={showBpmTools ? "chevron-up" : "chevron-down"}
+                                        size={18}
+                                        color="#111"
+                                    />
+                                </Pressable>
+                            </View>
+                            {showBpmTools && (
+                                <View style={styles.bpmPanel}>
+                                    <View style={styles.bpmRow}>
+                                        <Pressable style={styles.bpmButton} onPress={() => adjustBpm(-1)}>
+                                            <MaterialCommunityIcons name="minus" size={18} color="#fff" />
+                                        </Pressable>
+                                        <Text style={styles.bpmValue}>{bpm} BPM</Text>
+                                        <Pressable style={styles.bpmButton} onPress={() => adjustBpm(1)}>
+                                            <MaterialCommunityIcons name="plus" size={18} color="#fff" />
+                                        </Pressable>
+                                        <Pressable style={styles.phaseButton} onPress={handleSetPhase}>
+                                            <Text style={styles.phaseButtonText}>Here is 1</Text>
+                                        </Pressable>
+                                    </View>
+                                    <View style={styles.bpmTapRow}>
+                                        <TapTempoButton onSetBpm={handleTapTempo} label="Tap Tempo" tone="dark" />
+                                    </View>
+                                </View>
+                            )}
+
+                            <View style={styles.loopLengthRow}>
+                                {[4, 8, 16, 32].map((beats) => {
+                                    const isActive = Math.abs(loopLengthBeats - beats) < 0.01;
+                                    return (
+                                        <Pressable
+                                            key={beats}
+                                            style={[
+                                                styles.loopLengthButton,
+                                                isActive && styles.loopLengthButtonActive,
+                                            ]}
+                                            onPress={() => handleSelectLoopLength(beats)}
+                                        >
+                                            <Text
+                                                style={[
+                                                    styles.loopLengthText,
+                                                    isActive && styles.loopLengthTextActive,
+                                                ]}
+                                            >
+                                                {beats} counts
+                                            </Text>
+                                        </Pressable>
+                                    );
+                                })}
+                            </View>
+
+                            <View style={styles.timelineSection}>
+                                <View style={styles.timelineHeader}>
+                                    <Text style={styles.timelineLabel}>Timeline</Text>
+                                    <Text style={styles.timelineValue}>
+                                        {formatTime(loopStartMillis)} - {formatTime(loopEndMillis)}
+                                    </Text>
+                                </View>
+                                <View
+                                    style={styles.timelineTrack}
+                                    onLayout={(event) => setTimelineWidth(event.nativeEvent.layout.width)}
+                                >
+                                    <View style={styles.timelineBase} />
+                                    <View style={styles.playheadScrubArea} {...playheadPanResponder.panHandlers} />
+                                    <View
+                                        style={[
+                                            styles.loopRange,
+                                            activeLoopDrag && styles.loopRangeActive,
+                                            {
+                                                left: loopStartLeft,
+                                                width: loopRangeWidth,
+                                            },
+                                        ]}
+                                        {...loopRangePanResponder.panHandlers}
+                                    />
+                                    <View
+                                        style={[
+                                            styles.loopHandle,
+                                            styles.loopHandleLeft,
+                                            activeLoopDrag === "start" && styles.loopHandleActive,
+                                            {
+                                                left: Math.max(0, loopStartLeft - LOOP_HANDLE_WIDTH / 2),
+                                            },
+                                        ]}
+                                        {...loopStartPanResponder.panHandlers}
+                                    >
+                                        <View style={styles.loopHandleGrip} />
+                                    </View>
+                                    <View
+                                        style={[
+                                            styles.loopHandle,
+                                            styles.loopHandleRight,
+                                            activeLoopDrag === "end" && styles.loopHandleActive,
+                                            {
+                                                left: Math.min(
+                                                    Math.max(0, timelineWidth - LOOP_HANDLE_WIDTH),
+                                                    loopEndLeft - LOOP_HANDLE_WIDTH / 2
+                                                ),
+                                            },
+                                        ]}
+                                        {...loopEndPanResponder.panHandlers}
+                                    >
+                                        <View style={styles.loopHandleGrip} />
+                                    </View>
+                                    <View style={[styles.playhead, { left: playheadLeft }]} />
+                                </View>
+                            </View>
+                        </View>
+
+                        <View style={styles.section}>
                             <Text style={styles.sectionTitle}>Loop Bookmarks</Text>
                             <ScrollView
                                 horizontal
                                 showsHorizontalScrollIndicator={false}
                                 contentContainerStyle={styles.bookmarkRow}
                             >
-                                <Pressable
-                                    style={[styles.bookmarkTile, styles.bookmarkTilePrimary]}
+                                <LibraryTile
+                                    width={bookmarkTileSize}
+                                    thumbnailUri={videoItem.thumbnailUri}
                                     onPress={handleSaveBookmark}
                                 >
-                                    <View style={styles.bookmarkTileBody}>
-                                        <MaterialCommunityIcons name="bookmark-plus" size={26} color="#fff" />
-                                        <Text style={styles.bookmarkTileText}>Save</Text>
+                                    <View style={[styles.bookmarkOverlay, styles.bookmarkOverlayPrimary]}>
+                                        <MaterialCommunityIcons name="bookmark-plus" size={20} color="#fff" />
+                                        <Text style={styles.bookmarkOverlayText}>Save</Text>
                                     </View>
-                                    <View style={styles.bookmarkTileIconOverlay}>
-                                        <MaterialCommunityIcons name="file-video" size={16} color="white" />
-                                    </View>
-                                </Pressable>
+                                </LibraryTile>
                                 {loopBookmarks.map((bookmark) => (
-                                    <Pressable
+                                    <LibraryTile
                                         key={bookmark.id}
-                                        style={styles.bookmarkTile}
+                                        width={bookmarkTileSize}
+                                        thumbnailUri={videoItem.thumbnailUri}
                                         onPress={() => applyBookmark(bookmark)}
                                     >
-                                        <View style={styles.bookmarkTileBody}>
-                                            <Text style={styles.bookmarkTileTitle}>{bookmark.loopLengthBeats} counts</Text>
-                                            <Text style={styles.bookmarkTileSub}>{bookmark.bpm} BPM</Text>
-                                            <Text style={styles.bookmarkTileSub}>
-                                                {formatTime(bookmark.loopStartMillis)}
+                                        <View style={styles.bookmarkOverlay}>
+                                            <Text style={styles.bookmarkOverlayTitle}>
+                                                {formatCounts(bookmark.loopLengthBeats)} counts
                                             </Text>
+                                            <Text style={styles.bookmarkOverlaySub}>{bookmark.bpm} BPM</Text>
                                         </View>
-                                        <View style={styles.bookmarkTileIconOverlay}>
-                                            <MaterialCommunityIcons name="file-video" size={16} color="white" />
-                                        </View>
-                                    </Pressable>
+                                    </LibraryTile>
                                 ))}
                             </ScrollView>
                         </View>
 
                         <View style={styles.section}>
-                            <Text style={styles.sectionTitle}>Loop Controls</Text>
-                            <View style={styles.bpmRow}>
-                                <Pressable style={styles.bpmButton} onPress={() => adjustBpm(-1)}>
-                                    <MaterialCommunityIcons name="minus" size={18} color="#fff" />
-                                </Pressable>
-                                <Text style={styles.bpmValue}>{bpm} BPM</Text>
-                                <Pressable style={styles.bpmButton} onPress={() => adjustBpm(1)}>
-                                    <MaterialCommunityIcons name="plus" size={18} color="#fff" />
-                                </Pressable>
-                                <Pressable style={styles.phaseButton} onPress={handleSetPhase}>
-                                    <Text style={styles.phaseButtonText}>Here is 1</Text>
-                                </Pressable>
-                            </View>
-
-                            <View style={styles.loopLengthRow}>
-                                {[4, 8, 16, 32].map((beats) => (
-                                    <Pressable
-                                        key={beats}
-                                        style={[
-                                            styles.loopLengthButton,
-                                            loopLengthBeats === beats && styles.loopLengthButtonActive,
-                                        ]}
-                                        onPress={() => setLoopLengthBeats(beats)}
-                                    >
-                                        <Text
-                                            style={[
-                                                styles.loopLengthText,
-                                                loopLengthBeats === beats && styles.loopLengthTextActive,
-                                            ]}
-                                        >
-                                            {beats} counts
-                                        </Text>
-                                    </Pressable>
-                                ))}
-                            </View>
-
-                            <View style={styles.loopSliderRow}>
-                                <View style={styles.loopSliderHeader}>
-                                    <Text style={styles.loopSliderLabel}>Loop window</Text>
-                                    <Text style={styles.loopSliderValue}>
-                                        {formatTime(loopStartMillis)} - {formatTime(loopEndMillis)}
-                                    </Text>
-                                </View>
-                                <View
-                                    style={styles.loopTrack}
-                                    onLayout={(event) => {
-                                        setLoopBarWidth(event.nativeEvent.layout.width);
-                                    }}
-                                    {...loopPanResponder.panHandlers}
-                                >
-                                    <View style={styles.loopTrackBackground} />
-                                    <View
-                                        style={[
-                                            styles.loopWindow,
-                                            {
-                                                width: loopWindowWidth,
-                                                left: loopWindowLeft,
-                                            },
-                                        ]}
-                                    />
-                                    <View style={[styles.loopPlayhead, { left: playheadLeft }]} />
-                                </View>
-                            </View>
-                        </View>
-
-                        <View style={styles.metaRow}>
-                            <TextInput
-                                style={styles.titleInput}
-                                value={title}
-                                onChangeText={setTitle}
-                                placeholder="Video Title"
-                                placeholderTextColor="#999"
-                            />
-                        </View>
-
-                        {/* Tags */}
-                        <View style={styles.tagsRow}>
-                            {tags.map((tag, i) => (
-                                <View key={i} style={styles.tagPill}>
-                                    <Text style={styles.tagPillText}>#{tag}</Text>
-                                    <Pressable onPress={() => removeTag(tag)}>
-                                        <MaterialCommunityIcons name="close" size={12} color="#fff" />
-                                    </Pressable>
-                                </View>
-                            ))}
-                            <View style={styles.addTagWrapper}>
-                                <MaterialCommunityIcons name="tag-plus" size={16} color="#666" />
+                            <Text style={styles.sectionTitle}>Metadata</Text>
+                            <View style={styles.metaRow}>
                                 <TextInput
-                                    style={styles.addTagInput}
-                                    placeholder="Add tag..."
-                                    value={newTag}
-                                    onChangeText={setNewTag}
-                                    onSubmitEditing={() => addTag()}
+                                    style={styles.titleInput}
+                                    value={title}
+                                    onChangeText={setTitle}
+                                    placeholder="Video Title"
+                                    placeholderTextColor="#999"
                                 />
                             </View>
-                        </View>
-                        {tagSuggestions.length > 0 && (
-                            <View style={styles.suggestionsRow}>
-                                {tagSuggestions.map((tag) => (
-                                    <Pressable
-                                        key={tag}
-                                        style={styles.suggestionPill}
-                                        onPress={() => addTag(tag)}
-                                    >
-                                        <Text style={styles.suggestionText}>#{tag}</Text>
-                                    </Pressable>
-                                ))}
-                            </View>
-                        )}
 
-                        <TextInput
-                            style={styles.notesInput}
-                            value={memo}
-                            onChangeText={setMemo}
-                            placeholder="Type notes here... (Auto-saved)"
-                            multiline
-                            scrollEnabled={false}
-                        />
+                            {/* Tags */}
+                            <View style={styles.tagsRow}>
+                                {tags.map((tag, i) => (
+                                    <View key={i} style={styles.tagPill}>
+                                        <Text style={styles.tagPillText}>#{tag}</Text>
+                                        <Pressable onPress={() => removeTag(tag)}>
+                                            <MaterialCommunityIcons name="close" size={12} color="#fff" />
+                                        </Pressable>
+                                    </View>
+                                ))}
+                                <View style={styles.addTagWrapper}>
+                                    <MaterialCommunityIcons name="tag-plus" size={16} color="#666" />
+                                    <TextInput
+                                        style={styles.addTagInput}
+                                        placeholder="Add tag..."
+                                        value={newTag}
+                                        onChangeText={setNewTag}
+                                        onSubmitEditing={() => addTag()}
+                                    />
+                                </View>
+                            </View>
+                            {tagSuggestions.length > 0 && (
+                                <View style={styles.suggestionsRow}>
+                                    {tagSuggestions.map((tag) => (
+                                        <Pressable
+                                            key={tag}
+                                            style={styles.suggestionPill}
+                                            onPress={() => addTag(tag)}
+                                        >
+                                            <Text style={styles.suggestionText}>#{tag}</Text>
+                                        </Pressable>
+                                    ))}
+                                </View>
+                            )}
+
+                            <TextInput
+                                style={styles.notesInput}
+                                value={memo}
+                                onChangeText={setMemo}
+                                placeholder="Type notes here... (Auto-saved)"
+                                multiline
+                                scrollEnabled={false}
+                            />
+                        </View>
 
                         <View style={{ height: 100 }} />
                     </ScrollView>
@@ -776,10 +942,38 @@ const styles = StyleSheet.create({
     section: {
         gap: 10,
     },
+    sectionHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 12,
+    },
     sectionTitle: {
         fontSize: 14,
         fontWeight: '700',
         color: '#111',
+    },
+    bpmToggle: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 999,
+        backgroundColor: '#f1f1f1',
+    },
+    bpmToggleText: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: '#111',
+    },
+    bpmPanel: {
+        gap: 10,
+        padding: 12,
+        borderRadius: 12,
+        backgroundColor: '#f8f8f8',
+        borderWidth: 1,
+        borderColor: '#eee',
     },
     metaRow: {
         marginBottom: 10,
@@ -851,46 +1045,37 @@ const styles = StyleSheet.create({
         gap: 10,
         paddingRight: 10,
     },
-    bookmarkTile: {
-        width: 110,
-        height: 110,
-        borderRadius: 14,
-        borderWidth: 0.5,
-        borderColor: '#000',
-        backgroundColor: '#333',
-        overflow: 'hidden',
-    },
-    bookmarkTilePrimary: {
-        backgroundColor: '#111',
-    },
-    bookmarkTileBody: {
-        flex: 1,
-        justifyContent: 'center',
+    bookmarkOverlay: {
+        position: 'absolute',
+        left: 6,
+        right: 6,
+        bottom: 6,
+        paddingVertical: 6,
+        paddingHorizontal: 8,
+        borderRadius: 8,
+        backgroundColor: 'rgba(0,0,0,0.55)',
         alignItems: 'center',
-        gap: 4,
-        padding: 12,
+        gap: 2,
     },
-    bookmarkTileText: {
+    bookmarkOverlayPrimary: {
+        top: 6,
+        bottom: 6,
+        justifyContent: 'center',
+    },
+    bookmarkOverlayText: {
         color: '#fff',
         fontSize: 12,
         fontWeight: '600',
     },
-    bookmarkTileTitle: {
+    bookmarkOverlayTitle: {
         color: '#fff',
-        fontSize: 13,
+        fontSize: 12,
         fontWeight: '700',
     },
-    bookmarkTileSub: {
-        color: '#bbb',
-        fontSize: 11,
-    },
-    bookmarkTileIconOverlay: {
-        position: 'absolute',
-        bottom: 4,
-        right: 4,
-        backgroundColor: 'rgba(0,0,0,0.5)',
-        borderRadius: 4,
-        padding: 2,
+    bookmarkOverlaySub: {
+        color: '#ddd',
+        fontSize: 10,
+        fontWeight: '600',
     },
     bpmRow: {
         flexDirection: 'row',
@@ -922,6 +1107,9 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         fontSize: 12,
     },
+    bpmTapRow: {
+        alignItems: 'flex-start',
+    },
     loopLengthRow: {
         flexDirection: 'row',
         flexWrap: 'wrap',
@@ -946,47 +1134,101 @@ const styles = StyleSheet.create({
     loopLengthTextActive: {
         color: '#fff',
     },
-    loopSliderRow: {
-        gap: 6,
+    timelineSection: {
+        gap: 8,
     },
-    loopSliderHeader: {
+    timelineHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
     },
-    loopSliderLabel: {
+    timelineLabel: {
         color: '#111',
         fontSize: 12,
         fontWeight: '600',
     },
-    loopSliderValue: {
+    timelineValue: {
         color: '#666',
         fontSize: 12,
     },
-    loopTrack: {
+    timelineTrack: {
         width: '100%',
-        height: 28,
-        borderRadius: 8,
-        overflow: 'hidden',
+        height: 56,
+        borderRadius: 12,
+        backgroundColor: '#f2f2f2',
         justifyContent: 'center',
+        overflow: 'visible',
     },
-    loopTrackBackground: {
+    timelineBase: {
         ...StyleSheet.absoluteFillObject,
-        backgroundColor: '#eee',
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: '#e2e2e2',
+        backgroundColor: '#f7f7f7',
+    },
+    playheadScrubArea: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        height: 16,
+        zIndex: 3,
+    },
+    loopRange: {
+        position: 'absolute',
+        top: 14,
+        bottom: 6,
+        borderRadius: 10,
+        borderWidth: 2,
+        borderColor: '#f5c842',
+        backgroundColor: 'rgba(245,200,66,0.18)',
+    },
+    loopRangeActive: {
+        borderColor: '#f0b429',
+        backgroundColor: 'rgba(245,200,66,0.28)',
+        shadowColor: '#f0b429',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.4,
+        shadowRadius: 4,
+        elevation: 3,
+    },
+    loopHandle: {
+        position: 'absolute',
+        top: 10,
+        width: 24,
+        height: 40,
         borderRadius: 8,
+        backgroundColor: '#f5c842',
+        borderWidth: 1,
+        borderColor: '#d8a700',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 4,
     },
-    loopWindow: {
-        position: 'absolute',
-        top: 4,
-        bottom: 4,
-        borderRadius: 6,
-        backgroundColor: 'rgba(17,17,17,0.9)',
+    loopHandleLeft: {
+        borderTopRightRadius: 6,
+        borderBottomRightRadius: 6,
     },
-    loopPlayhead: {
+    loopHandleRight: {
+        borderTopLeftRadius: 6,
+        borderBottomLeftRadius: 6,
+    },
+    loopHandleActive: {
+        backgroundColor: '#f0b429',
+        borderColor: '#c98f00',
+    },
+    loopHandleGrip: {
+        width: 2,
+        height: 18,
+        borderRadius: 1,
+        backgroundColor: '#7a5b00',
+    },
+    playhead: {
         position: 'absolute',
-        top: 2,
-        bottom: 2,
+        top: 6,
+        bottom: 6,
         width: 2,
         backgroundColor: '#ff3b30',
+        zIndex: 2,
     },
 });
