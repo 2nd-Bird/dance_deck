@@ -687,6 +687,7 @@ export default function VideoPlayerScreen() {
                                         style={[
                                             styles.loopRange,
                                             activeLoopDrag && styles.loopRangeActive,
+                                            !loopEnabled && styles.loopRangeDisabled,
                                             {
                                                 left: loopStartLeft,
                                                 width: loopRangeWidth,
@@ -699,6 +700,7 @@ export default function VideoPlayerScreen() {
                                             styles.loopHandle,
                                             styles.loopHandleLeft,
                                             activeLoopDrag === "start" && styles.loopHandleActive,
+                                            !loopEnabled && styles.loopHandleDisabled,
                                             {
                                                 left: Math.max(0, loopStartLeft - LOOP_HANDLE_WIDTH / 2),
                                             },
@@ -712,6 +714,7 @@ export default function VideoPlayerScreen() {
                                             styles.loopHandle,
                                             styles.loopHandleRight,
                                             activeLoopDrag === "end" && styles.loopHandleActive,
+                                            !loopEnabled && styles.loopHandleDisabled,
                                             {
                                                 left: Math.min(
                                                     Math.max(0, timelineWidth - LOOP_HANDLE_WIDTH),
@@ -1199,6 +1202,9 @@ const styles = StyleSheet.create({
         shadowRadius: 4,
         elevation: 3,
     },
+    loopRangeDisabled: {
+        opacity: 0.5,
+    },
     loopHandle: {
         position: 'absolute',
         top: 10,
@@ -1223,6 +1229,9 @@ const styles = StyleSheet.create({
     loopHandleActive: {
         backgroundColor: '#f0b429',
         borderColor: '#c98f00',
+    },
+    loopHandleDisabled: {
+        opacity: 0.6,
     },
     loopHandleGrip: {
         width: 2,
