@@ -5,11 +5,12 @@ import { LoopBookmark, VideoItem } from "@/types";
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import Slider from '@react-native-community/slider';
 import { AVPlaybackStatus, ResizeMode, Video } from "expo-av";
+import * as VideoThumbnails from 'expo-video-thumbnails';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, KeyboardAvoidingView, PanResponder, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, View, useWindowDimensions } from "react-native";
+import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, PanResponder, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, View, useWindowDimensions } from "react-native";
 import uuid from 'react-native-uuid';
 
 export default function VideoPlayerScreen() {
@@ -44,6 +45,7 @@ export default function VideoPlayerScreen() {
     const [isScrubbing, setIsScrubbing] = useState(false);
     const [scrubPositionMillis, setScrubPositionMillis] = useState(0);
     const [showBpmTools, setShowBpmTools] = useState(false);
+    const [timelineThumbs, setTimelineThumbs] = useState<string[]>([]);
     const loopDragStart = useRef({ start: 0, end: 0 });
     const timelineWidthRef = useRef(timelineWidth);
     const playheadDragStart = useRef(0);
@@ -52,6 +54,7 @@ export default function VideoPlayerScreen() {
     const durationRef = useRef(durationMillis);
     const bpmRef = useRef(bpm);
     const loopDurationRef = useRef(0);
+    const timelineThumbsKeyRef = useRef("");
 
     // Metadata State (Notes)
     const [memo, setMemo] = useState("");
@@ -177,6 +180,38 @@ export default function VideoPlayerScreen() {
         loopDurationRef.current = getLoopDuration();
     }, [getLoopDuration]);
 
+    useEffect(() => {
+        if (!videoItem?.uri || durationMillis <= 0) return;
+        const key = `${videoItem.uri}:${Math.round(durationMillis)}`;
+        if (timelineThumbsKeyRef.current === key) return;
+        timelineThumbsKeyRef.current = key;
+        let cancelled = false;
+        const loadTimelineThumbs = async () => {
+            const count = 12;
+            const interval = durationMillis / count;
+            const nextThumbs: string[] = [];
+            for (let i = 0; i < count; i += 1) {
+                const time = Math.min(durationMillis - 100, Math.max(0, Math.floor(i * interval)));
+                try {
+                    const { uri } = await VideoThumbnails.getThumbnailAsync(videoItem.uri, { time });
+                    if (cancelled) return;
+                    nextThumbs.push(uri);
+                } catch (error) {
+                    if (__DEV__) {
+                        console.warn('[Timeline] thumbnail failed', error);
+                    }
+                }
+            }
+            if (!cancelled) {
+                setTimelineThumbs(nextThumbs);
+            }
+        };
+        loadTimelineThumbs();
+        return () => {
+            cancelled = true;
+        };
+    }, [videoItem?.uri, durationMillis]);
+
     const getMinLoopDurationFromRefs = () => {
         const duration = durationRef.current;
         if (duration <= 0) return 0;
@@ -184,10 +219,25 @@ export default function VideoPlayerScreen() {
         return Math.min(duration, Math.max(250, beat * 0.5));
     };
 
-    const clampLoopStartForDuration = (value: number, loopDuration: number) => {
-        const maxStart = Math.max(0, durationMillis - loopDuration);
-        return Math.min(Math.max(value, 0), maxStart);
-    };
+    const clampLoopStartForDuration = useCallback(
+        (value: number, loopDuration: number) => {
+            const maxStart = Math.max(0, durationMillis - loopDuration);
+            return Math.min(Math.max(value, 0), maxStart);
+        },
+        [durationMillis]
+    );
+
+    const snapLoopStartToBeat = useCallback(
+        (value: number, loopDuration: number) => {
+            const beat = getBeatDuration();
+            if (!beat || beat <= 0) return value;
+            const offset = value - phaseMillis;
+            const beats = Math.round(offset / beat);
+            const snapped = phaseMillis + beats * beat;
+            return clampLoopStartForDuration(snapped, loopDuration);
+        },
+        [getBeatDuration, phaseMillis, clampLoopStartForDuration]
+    );
 
     const getPositionFromX = (x: number) => {
         const width = timelineWidthRef.current;
@@ -277,6 +327,11 @@ export default function VideoPlayerScreen() {
             },
             onPanResponderRelease: () => {
                 setActiveLoopDrag(null);
+                const loopDuration = loopDurationRef.current;
+                const snapped = snapLoopStartToBeat(loopStartRef.current, loopDuration);
+                if (Math.abs(snapped - loopStartRef.current) > 1) {
+                    setLoopStartMillis(snapped);
+                }
             },
             onPanResponderTerminate: () => {
                 setActiveLoopDrag(null);
@@ -385,14 +440,16 @@ export default function VideoPlayerScreen() {
         return beats.toFixed(1);
     };
 
-    // Overlay Visibility Logic
-    useEffect(() => {
-        let timeout: any;
-        if (controlsVisible && isPlaying) {
-            timeout = setTimeout(() => setControlsVisible(false), 3000);
+    const formatLoopLengthLabel = (beats: number) => {
+        if (beats < 8) {
+            return `${formatCounts(beats)} counts`;
         }
-        return () => clearTimeout(timeout);
-    }, [controlsVisible, isPlaying]);
+        const eights = beats / 8;
+        const rounded = Math.round(eights);
+        const display = Math.abs(eights - rounded) < 0.05 ? `${rounded}` : eights.toFixed(1);
+        const suffix = Math.abs(eights - 1) < 0.05 ? "eight" : "eights";
+        return `${display} ${suffix}`;
+    };
 
     const handleVideoTap = () => {
         setControlsVisible(!controlsVisible);
@@ -497,6 +554,7 @@ export default function VideoPlayerScreen() {
         || videoItem.uri.includes('.mov');
 
     const isLandscape = orientation === ScreenOrientation.Orientation.LANDSCAPE_LEFT || orientation === ScreenOrientation.Orientation.LANDSCAPE_RIGHT;
+    const showLoopUi = controlsVisible && !isLandscape;
     const bookmarkTileSize = Math.min(140, Math.max(96, windowWidth / 3));
 
     return (
@@ -588,12 +646,6 @@ export default function VideoPlayerScreen() {
                                             <MaterialCommunityIcons name="swap-horizontal" size={24} color={isMirrored ? "#FF0000" : "white"} />
                                             <Text style={styles.toolText}>Mirror</Text>
                                         </Pressable>
-
-                                        {/* Loop Toggle */}
-                                        <Pressable style={styles.toolItem} onPress={() => setLoopEnabled(!loopEnabled)}>
-                                            <MaterialCommunityIcons name={loopEnabled ? "repeat" : "repeat-off"} size={24} color={loopEnabled ? "#FF0000" : "white"} />
-                                            <Text style={styles.toolText}>Loop</Text>
-                                        </Pressable>
                                     </View>
                                 </View>
                             </LinearGradient>
@@ -609,127 +661,157 @@ export default function VideoPlayerScreen() {
                     style={styles.notesArea}
                 >
                     <ScrollView contentContainerStyle={styles.notesContent}>
-                        <View style={styles.section}>
-                            <View style={styles.sectionHeader}>
-                                <Text style={styles.sectionTitle}>Loop</Text>
-                                <Pressable
-                                    style={styles.bpmToggle}
-                                    onPress={() => setShowBpmTools((current) => !current)}
-                                >
-                                    <MaterialCommunityIcons name="metronome" size={16} color="#111" />
-                                    <Text style={styles.bpmToggleText}>{bpm} BPM</Text>
-                                    <MaterialCommunityIcons
-                                        name={showBpmTools ? "chevron-up" : "chevron-down"}
-                                        size={18}
-                                        color="#111"
-                                    />
-                                </Pressable>
-                            </View>
-                            {showBpmTools && (
-                                <View style={styles.bpmPanel}>
-                                    <View style={styles.bpmRow}>
-                                        <Pressable style={styles.bpmButton} onPress={() => adjustBpm(-1)}>
-                                            <MaterialCommunityIcons name="minus" size={18} color="#fff" />
-                                        </Pressable>
-                                        <Text style={styles.bpmValue}>{bpm} BPM</Text>
-                                        <Pressable style={styles.bpmButton} onPress={() => adjustBpm(1)}>
-                                            <MaterialCommunityIcons name="plus" size={18} color="#fff" />
-                                        </Pressable>
-                                        <Pressable style={styles.phaseButton} onPress={handleSetPhase}>
-                                            <Text style={styles.phaseButtonText}>Here is 1</Text>
-                                        </Pressable>
-                                    </View>
-                                    <View style={styles.bpmTapRow}>
-                                        <TapTempoButton onSetBpm={handleTapTempo} label="Tap Tempo" tone="dark" />
-                                    </View>
-                                </View>
-                            )}
-
-                            <View style={styles.loopLengthRow}>
-                                {[4, 8, 16, 32].map((beats) => {
-                                    const isActive = Math.abs(loopLengthBeats - beats) < 0.01;
-                                    return (
+                        {showLoopUi && (
+                            <View style={styles.section}>
+                                <View style={styles.sectionHeader}>
+                                    <Text style={styles.sectionTitle}>Loop</Text>
+                                    <View style={styles.loopHeaderControls}>
                                         <Pressable
-                                            key={beats}
-                                            style={[
-                                                styles.loopLengthButton,
-                                                isActive && styles.loopLengthButtonActive,
-                                            ]}
-                                            onPress={() => handleSelectLoopLength(beats)}
+                                            style={[styles.loopToggleButton, !loopEnabled && styles.loopToggleButtonOff]}
+                                            onPress={() => setLoopEnabled(!loopEnabled)}
                                         >
-                                            <Text
-                                                style={[
-                                                    styles.loopLengthText,
-                                                    isActive && styles.loopLengthTextActive,
-                                                ]}
-                                            >
-                                                {beats} counts
+                                            <MaterialCommunityIcons
+                                                name={loopEnabled ? "repeat" : "repeat-off"}
+                                                size={16}
+                                                color={loopEnabled ? "#fff" : "#666"}
+                                            />
+                                            <Text style={[styles.loopToggleText, !loopEnabled && styles.loopToggleTextOff]}>
+                                                {loopEnabled ? "On" : "Off"}
                                             </Text>
                                         </Pressable>
-                                    );
-                                })}
-                            </View>
+                                        <Pressable
+                                            style={styles.bpmToggle}
+                                            onPress={() => setShowBpmTools((current) => !current)}
+                                        >
+                                            <MaterialCommunityIcons name="metronome" size={16} color="#111" />
+                                            <Text style={styles.bpmToggleText}>{bpm} BPM</Text>
+                                            <MaterialCommunityIcons
+                                                name={showBpmTools ? "chevron-up" : "chevron-down"}
+                                                size={18}
+                                                color="#111"
+                                            />
+                                        </Pressable>
+                                    </View>
+                                </View>
+                                {showBpmTools && (
+                                    <View style={styles.bpmPanel}>
+                                        <View style={styles.bpmRow}>
+                                            <Pressable style={styles.bpmButton} onPress={() => adjustBpm(-1)}>
+                                                <MaterialCommunityIcons name="minus" size={18} color="#fff" />
+                                            </Pressable>
+                                            <Text style={styles.bpmValue}>{bpm} BPM</Text>
+                                            <Pressable style={styles.bpmButton} onPress={() => adjustBpm(1)}>
+                                                <MaterialCommunityIcons name="plus" size={18} color="#fff" />
+                                            </Pressable>
+                                            <Pressable style={styles.phaseButton} onPress={handleSetPhase}>
+                                                <Text style={styles.phaseButtonText}>Here is 1</Text>
+                                            </Pressable>
+                                        </View>
+                                        <View style={styles.bpmTapRow}>
+                                            <TapTempoButton onSetBpm={handleTapTempo} label="Tap Tempo" tone="dark" />
+                                        </View>
+                                    </View>
+                                )}
 
-                            <View style={styles.timelineSection}>
-                                <View style={styles.timelineHeader}>
-                                    <Text style={styles.timelineLabel}>Timeline</Text>
-                                    <Text style={styles.timelineValue}>
-                                        {formatTime(loopStartMillis)} - {formatTime(loopEndMillis)}
-                                    </Text>
+                                <View style={styles.loopLengthRow}>
+                                    {[4, 8, 16, 32].map((beats) => {
+                                        const isActive = Math.abs(loopLengthBeats - beats) < 0.01;
+                                        return (
+                                            <Pressable
+                                                key={beats}
+                                                style={[
+                                                    styles.loopLengthButton,
+                                                    isActive && styles.loopLengthButtonActive,
+                                                ]}
+                                                onPress={() => handleSelectLoopLength(beats)}
+                                            >
+                                                <Text
+                                                    style={[
+                                                        styles.loopLengthText,
+                                                        isActive && styles.loopLengthTextActive,
+                                                    ]}
+                                                >
+                                                    {formatLoopLengthLabel(beats)}
+                                                </Text>
+                                            </Pressable>
+                                        );
+                                    })}
                                 </View>
-                                <View
-                                    style={styles.timelineTrack}
-                                    onLayout={(event) => setTimelineWidth(event.nativeEvent.layout.width)}
-                                >
-                                    <View style={styles.timelineBase} />
-                                    <View style={styles.playheadScrubArea} {...playheadPanResponder.panHandlers} />
-                                    <View
-                                        style={[
-                                            styles.loopRange,
-                                            activeLoopDrag && styles.loopRangeActive,
-                                            !loopEnabled && styles.loopRangeDisabled,
-                                            {
-                                                left: loopStartLeft,
-                                                width: loopRangeWidth,
-                                            },
-                                        ]}
-                                        {...loopRangePanResponder.panHandlers}
-                                    />
-                                    <View
-                                        style={[
-                                            styles.loopHandle,
-                                            styles.loopHandleLeft,
-                                            activeLoopDrag === "start" && styles.loopHandleActive,
-                                            !loopEnabled && styles.loopHandleDisabled,
-                                            {
-                                                left: Math.max(0, loopStartLeft - LOOP_HANDLE_WIDTH / 2),
-                                            },
-                                        ]}
-                                        {...loopStartPanResponder.panHandlers}
-                                    >
-                                        <View style={styles.loopHandleGrip} />
+
+                                <View style={styles.timelineSection}>
+                                    <View style={styles.timelineHeader}>
+                                        <Text style={styles.timelineLabel}>Timeline</Text>
+                                        <Text style={styles.timelineValue}>
+                                            {formatTime(loopStartMillis)} - {formatTime(loopEndMillis)}
+                                        </Text>
                                     </View>
                                     <View
-                                        style={[
-                                            styles.loopHandle,
-                                            styles.loopHandleRight,
-                                            activeLoopDrag === "end" && styles.loopHandleActive,
-                                            !loopEnabled && styles.loopHandleDisabled,
-                                            {
-                                                left: Math.min(
-                                                    Math.max(0, timelineWidth - LOOP_HANDLE_WIDTH),
-                                                    loopEndLeft - LOOP_HANDLE_WIDTH / 2
-                                                ),
-                                            },
-                                        ]}
-                                        {...loopEndPanResponder.panHandlers}
+                                        style={styles.timelineTrack}
+                                        onLayout={(event) => setTimelineWidth(event.nativeEvent.layout.width)}
                                     >
-                                        <View style={styles.loopHandleGrip} />
+                                        <View style={styles.timelineBase} />
+                                        <View style={styles.timelineFrames}>
+                                            {timelineThumbs.length > 0 ? (
+                                                timelineThumbs.map((uri, index) => (
+                                                    <Image
+                                                        key={`${uri}-${index}`}
+                                                        source={{ uri }}
+                                                        style={styles.timelineFrame}
+                                                    />
+                                                ))
+                                            ) : (
+                                                <View style={styles.timelineFramesFallback} />
+                                            )}
+                                        </View>
+                                        <View style={styles.playheadScrubArea} {...playheadPanResponder.panHandlers} />
+                                        <View
+                                            style={[
+                                                styles.loopRange,
+                                                activeLoopDrag && styles.loopRangeActive,
+                                                !loopEnabled && styles.loopRangeDisabled,
+                                                {
+                                                    left: loopStartLeft,
+                                                    width: loopRangeWidth,
+                                                },
+                                            ]}
+                                            {...loopRangePanResponder.panHandlers}
+                                        />
+                                        <View
+                                            style={[
+                                                styles.loopHandle,
+                                                styles.loopHandleLeft,
+                                                activeLoopDrag === "start" && styles.loopHandleActive,
+                                                !loopEnabled && styles.loopHandleDisabled,
+                                                {
+                                                    left: Math.max(0, loopStartLeft - LOOP_HANDLE_WIDTH / 2),
+                                                },
+                                            ]}
+                                            {...loopStartPanResponder.panHandlers}
+                                        >
+                                            <View style={styles.loopHandleGrip} />
+                                        </View>
+                                        <View
+                                            style={[
+                                                styles.loopHandle,
+                                                styles.loopHandleRight,
+                                                activeLoopDrag === "end" && styles.loopHandleActive,
+                                                !loopEnabled && styles.loopHandleDisabled,
+                                                {
+                                                    left: Math.min(
+                                                        Math.max(0, timelineWidth - LOOP_HANDLE_WIDTH),
+                                                        loopEndLeft - LOOP_HANDLE_WIDTH / 2
+                                                    ),
+                                                },
+                                            ]}
+                                            {...loopEndPanResponder.panHandlers}
+                                        >
+                                            <View style={styles.loopHandleGrip} />
+                                        </View>
+                                        <View style={[styles.playhead, { left: playheadLeft }]} />
                                     </View>
-                                    <View style={[styles.playhead, { left: playheadLeft }]} />
                                 </View>
                             </View>
-                        </View>
+                        )}
 
                         <View style={styles.section}>
                             <Text style={styles.sectionTitle}>Loop Bookmarks</Text>
@@ -757,9 +839,8 @@ export default function VideoPlayerScreen() {
                                     >
                                         <View style={styles.bookmarkOverlay}>
                                             <Text style={styles.bookmarkOverlayTitle}>
-                                                {formatCounts(bookmark.loopLengthBeats)} counts
+                                                {formatLoopLengthLabel(bookmark.loopLengthBeats)}
                                             </Text>
-                                            <Text style={styles.bookmarkOverlaySub}>{bookmark.bpm} BPM</Text>
                                         </View>
                                     </LibraryTile>
                                 ))}
@@ -957,6 +1038,34 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'space-between',
         gap: 12,
+    },
+    loopHeaderControls: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        flexWrap: 'wrap',
+    },
+    loopToggleButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 999,
+        backgroundColor: '#111',
+    },
+    loopToggleButtonOff: {
+        backgroundColor: '#f1f1f1',
+        borderWidth: 1,
+        borderColor: '#ddd',
+    },
+    loopToggleText: {
+        color: '#fff',
+        fontSize: 12,
+        fontWeight: '600',
+    },
+    loopToggleTextOff: {
+        color: '#666',
     },
     sectionTitle: {
         fontSize: 14,
@@ -1163,18 +1272,38 @@ const styles = StyleSheet.create({
     },
     timelineTrack: {
         width: '100%',
-        height: 56,
-        borderRadius: 12,
-        backgroundColor: '#f2f2f2',
+        height: 64,
+        borderRadius: 14,
+        backgroundColor: '#f6f6f6',
         justifyContent: 'center',
         overflow: 'visible',
     },
     timelineBase: {
         ...StyleSheet.absoluteFillObject,
-        borderRadius: 12,
+        borderRadius: 14,
         borderWidth: 1,
-        borderColor: '#e2e2e2',
-        backgroundColor: '#f7f7f7',
+        borderColor: '#e0e0e0',
+        backgroundColor: '#fafafa',
+    },
+    timelineFrames: {
+        position: 'absolute',
+        top: 8,
+        bottom: 8,
+        left: 0,
+        right: 0,
+        borderRadius: 10,
+        overflow: 'hidden',
+        flexDirection: 'row',
+        backgroundColor: '#1a1a1a',
+    },
+    timelineFrame: {
+        flex: 1,
+        height: '100%',
+        resizeMode: 'cover',
+    },
+    timelineFramesFallback: {
+        flex: 1,
+        backgroundColor: '#222',
     },
     playheadScrubArea: {
         position: 'absolute',
@@ -1186,9 +1315,9 @@ const styles = StyleSheet.create({
     },
     loopRange: {
         position: 'absolute',
-        top: 14,
-        bottom: 6,
-        borderRadius: 10,
+        top: 8,
+        bottom: 8,
+        borderRadius: 8,
         borderWidth: 2,
         borderColor: '#f5c842',
         backgroundColor: 'rgba(245,200,66,0.18)',
@@ -1207,9 +1336,9 @@ const styles = StyleSheet.create({
     },
     loopHandle: {
         position: 'absolute',
-        top: 10,
+        top: 6,
         width: 24,
-        height: 40,
+        height: 52,
         borderRadius: 8,
         backgroundColor: '#f5c842',
         borderWidth: 1,
@@ -1241,8 +1370,8 @@ const styles = StyleSheet.create({
     },
     playhead: {
         position: 'absolute',
-        top: 6,
-        bottom: 6,
+        top: 8,
+        bottom: 8,
         width: 2,
         backgroundColor: '#ff3b30',
         zIndex: 2,
