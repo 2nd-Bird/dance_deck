@@ -42,6 +42,7 @@ export default function VideoPlayerScreen() {
     const [loopStartMillis, setLoopStartMillis] = useState(0);
     const [loopEnabled, setLoopEnabled] = useState(true);
     const [loopBookmarks, setLoopBookmarks] = useState<LoopBookmark[]>([]);
+    const [bookmarkThumbs, setBookmarkThumbs] = useState<Record<string, string>>({});
     const [timelineWidth, setTimelineWidth] = useState(0);
     const [activeLoopDrag, setActiveLoopDrag] = useState<null | "start" | "end" | "range">(null);
     const [isScrubbing, setIsScrubbing] = useState(false);
@@ -65,6 +66,7 @@ export default function VideoPlayerScreen() {
     const bpmRef = useRef(bpm);
     const loopDurationRef = useRef(0);
     const timelineThumbsKeyRef = useRef("");
+    const bookmarkThumbsRef = useRef<Record<string, string>>({});
     const overlayOpacity = useRef(new Animated.Value(0)).current;
     const overlayHideTimeoutRef = useRef<any>(null);
     const tapTimeoutRef = useRef<any>(null);
@@ -314,6 +316,38 @@ export default function VideoPlayerScreen() {
         };
     }, [videoItem?.uri, durationMillis]);
 
+    useEffect(() => {
+        bookmarkThumbsRef.current = bookmarkThumbs;
+    }, [bookmarkThumbs]);
+
+    useEffect(() => {
+        if (!videoItem?.uri || loopBookmarks.length === 0) return;
+        let cancelled = false;
+        const loadBookmarkThumbs = async () => {
+            const nextThumbs: Record<string, string> = {};
+            for (const bookmark of loopBookmarks) {
+                if (bookmarkThumbsRef.current[bookmark.id]) continue;
+                const time = Math.max(0, Math.min(bookmark.loopStartMillis, durationRef.current || durationMillis || 0));
+                try {
+                    const { uri } = await VideoThumbnails.getThumbnailAsync(videoItem.uri, { time });
+                    if (cancelled) return;
+                    nextThumbs[bookmark.id] = uri;
+                } catch (error) {
+                    if (__DEV__) {
+                        console.warn('[Bookmark] thumbnail failed', error);
+                    }
+                }
+            }
+            if (!cancelled && Object.keys(nextThumbs).length > 0) {
+                setBookmarkThumbs((current) => ({ ...current, ...nextThumbs }));
+            }
+        };
+        loadBookmarkThumbs();
+        return () => {
+            cancelled = true;
+        };
+    }, [videoItem?.uri, loopBookmarks, durationMillis]);
+
     const getMinLoopDurationFromRefs = () => {
         const duration = durationRef.current;
         if (duration <= 0) return 0;
@@ -524,11 +558,15 @@ export default function VideoPlayerScreen() {
                 logTimelineTouch("range", "end");
                 setDebugActive("range", false);
                 setActiveLoopDrag(null);
+                const snapped = snapLoopStartToBeat(loopStartRef.current, loopDurationRef.current);
+                setLoopStartMillis(snapped);
             },
             onPanResponderTerminate: () => {
                 logTimelineTouch("range", "terminate");
                 setDebugActive("range", false);
                 setActiveLoopDrag(null);
+                const snapped = snapLoopStartToBeat(loopStartRef.current, loopDurationRef.current);
+                setLoopStartMillis(snapped);
             },
         })
     ).current;
@@ -592,9 +630,13 @@ export default function VideoPlayerScreen() {
         const basePosition = positionRef.current || 0;
         const nextPosition = Math.min(Math.max(basePosition + delta, 0), duration);
         videoRef.current?.setPositionAsync(nextPosition);
+        const fallbackY = locationY;
+        const overlayY = videoLayoutRef.current.height
+            ? videoLayoutRef.current.height * 0.5
+            : fallbackY;
         setSkipFeedback({
             x: locationX,
-            y: locationY,
+            y: overlayVisible ? overlayY : fallbackY,
             label: isRight ? "+5s" : "-5s",
             key: Date.now(),
         });
@@ -779,12 +821,11 @@ export default function VideoPlayerScreen() {
                                 colors={['rgba(0,0,0,0.7)', 'transparent', 'rgba(0,0,0,0.7)']}
                                 style={styles.overlayGradient}
                             >
-                                {/* Top Row: Back & Title */}
+                                {/* Top Row: Back */}
                                 <View style={styles.topControlRow}>
                                     <Pressable onPress={() => router.back()} style={styles.iconBtn}>
                                         <MaterialCommunityIcons name="chevron-down" size={32} color="white" />
                                     </Pressable>
-                                    <Text style={styles.overlayTitle} numberOfLines={1}>{title || "Untitled"}</Text>
                                     <View style={styles.iconBtn} />
                                 </View>
 
@@ -826,6 +867,16 @@ export default function VideoPlayerScreen() {
                                         <Pressable style={styles.toolItem} onPress={() => setIsMirrored(!isMirrored)}>
                                             <MaterialCommunityIcons name="swap-horizontal" size={24} color={isMirrored ? "#FF0000" : "white"} />
                                             <Text style={styles.toolText}>Mirror</Text>
+                                        </Pressable>
+
+                                        {/* Loop */}
+                                        <Pressable style={styles.toolItem} onPress={() => setLoopEnabled(!loopEnabled)}>
+                                            <MaterialCommunityIcons
+                                                name={loopEnabled ? "repeat" : "repeat-off"}
+                                                size={24}
+                                                color={loopEnabled ? "#FF0000" : "white"}
+                                            />
+                                            <Text style={styles.toolText}>{loopEnabled ? "Loop On" : "Loop Off"}</Text>
                                         </Pressable>
                                     </View>
                                 </View>
@@ -895,19 +946,6 @@ export default function VideoPlayerScreen() {
                                     <Text style={styles.sectionTitle}>Loop</Text>
                                     <View style={styles.loopHeaderControls}>
                                         <Pressable
-                                            style={[styles.loopToggleButton, !loopEnabled && styles.loopToggleButtonOff]}
-                                            onPress={() => setLoopEnabled(!loopEnabled)}
-                                        >
-                                            <MaterialCommunityIcons
-                                                name={loopEnabled ? "repeat" : "repeat-off"}
-                                                size={16}
-                                                color={loopEnabled ? "#fff" : "#666"}
-                                            />
-                                            <Text style={[styles.loopToggleText, !loopEnabled && styles.loopToggleTextOff]}>
-                                                {loopEnabled ? "On" : "Off"}
-                                            </Text>
-                                        </Pressable>
-                                        <Pressable
                                             style={styles.bpmToggle}
                                             onPress={() => setShowBpmTools((current) => !current)}
                                         >
@@ -968,7 +1006,6 @@ export default function VideoPlayerScreen() {
 
                                 <View style={styles.timelineSection}>
                                     <View style={styles.timelineHeader}>
-                                        <Text style={styles.timelineLabel}>Timeline</Text>
                                         <Text style={styles.timelineValue}>
                                             {formatTime(loopStartMillis)} - {formatTime(loopEndMillis)}
                                         </Text>
@@ -1055,7 +1092,7 @@ export default function VideoPlayerScreen() {
                         )}
 
                         <View style={styles.section}>
-                            <Text style={styles.sectionTitle}>Loop Bookmarks</Text>
+                            <View style={styles.sectionDivider} />
                             <ScrollView
                                 horizontal
                                 showsHorizontalScrollIndicator={false}
@@ -1075,7 +1112,7 @@ export default function VideoPlayerScreen() {
                                     <LibraryTile
                                         key={bookmark.id}
                                         width={bookmarkTileSize}
-                                        thumbnailUri={videoItem.thumbnailUri}
+                                        thumbnailUri={bookmarkThumbs[bookmark.id] || videoItem.thumbnailUri}
                                         onPress={() => applyBookmark(bookmark)}
                                     >
                                         <View style={styles.bookmarkOverlay}>
@@ -1089,7 +1126,7 @@ export default function VideoPlayerScreen() {
                         </View>
 
                         <View style={styles.section}>
-                            <Text style={styles.sectionTitle}>Metadata</Text>
+                            <View style={styles.sectionDivider} />
                             <View style={styles.metaRow}>
                                 <TextInput
                                     style={styles.titleInput}
@@ -1233,13 +1270,6 @@ const styles = StyleSheet.create({
     iconBtn: {
         padding: 8,
     },
-    overlayTitle: {
-        color: 'white',
-        fontWeight: 'bold',
-        fontSize: 16,
-        flex: 1,
-        marginLeft: 10,
-    },
     middleControlRow: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -1317,28 +1347,6 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         gap: 8,
         flexWrap: 'wrap',
-    },
-    loopToggleButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 6,
-        paddingHorizontal: 10,
-        paddingVertical: 6,
-        borderRadius: 999,
-        backgroundColor: '#111',
-    },
-    loopToggleButtonOff: {
-        backgroundColor: '#f1f1f1',
-        borderWidth: 1,
-        borderColor: '#ddd',
-    },
-    loopToggleText: {
-        color: '#fff',
-        fontSize: 12,
-        fontWeight: '600',
-    },
-    loopToggleTextOff: {
-        color: '#666',
     },
     sectionTitle: {
         fontSize: 14,
@@ -1531,17 +1539,17 @@ const styles = StyleSheet.create({
     },
     timelineHeader: {
         flexDirection: 'row',
-        justifyContent: 'space-between',
+        justifyContent: 'flex-end',
         alignItems: 'center',
-    },
-    timelineLabel: {
-        color: '#111',
-        fontSize: 12,
-        fontWeight: '600',
     },
     timelineValue: {
         color: '#666',
         fontSize: 12,
+    },
+    sectionDivider: {
+        height: 0.5,
+        backgroundColor: '#333',
+        opacity: 0.5,
     },
     timelineTrack: {
         width: '100%',
