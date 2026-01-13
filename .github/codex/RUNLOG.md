@@ -5,3 +5,4 @@
 - 2025-12-24 21:14 JST: Loop 1 removed persistent playback controls, snapped preset loop starts to beat grid, and expanded playhead scrub hit area.
 - 2025-12-25 08:05 JST: Loop 1 aligned overlay toolbar ordering, removed overlay title and section headers, adjusted skip feedback position, and generated loop-start bookmark thumbnails.
 - 2025-12-25 08:08 JST: Loop 2 snapped loop range start to beat grid on drag release.
+- 2026-01-14 08:07 JST: Loop 3 removed the loop bookmark saved badge.
