@@ -18,3 +18,4 @@
 2026-01-14 14:40 | feature/longrun-20260114 | 追加仕様5:1,4,5,6 | ok | add paywall + pro gating scaffolding
 2026-01-14 14:44 | feature/longrun-20260114 | 追加仕様4:7 | ok | remove loop section header label
 2026-01-14 14:46 | feature/longrun-20260114 | 追加仕様5:5 | ok | add app privacy notes doc
+2026-01-14 16:00 | feature/spec-gap-1 | 追加仕様3 §4.3 / 追加仕様4 §3 | ok | Loop toggle label now action-only
