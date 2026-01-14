@@ -1,5 +1,8 @@
 import LibraryTile from "@/components/LibraryTile";
+import PaywallModal from "@/components/PaywallModal";
 import TapTempoButton from "@/components/TapTempoButton";
+import { useProStatus } from "@/contexts/ProContext";
+import { trackEvent } from "@/services/analytics";
 import { getVideos, updateVideo } from "@/services/storage";
 import { LoopBookmark, VideoItem } from "@/types";
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -80,6 +83,8 @@ export default function VideoPlayerScreen() {
     const [tags, setTags] = useState<string[]>([]);
     const [newTag, setNewTag] = useState("");
     const [availableTags, setAvailableTags] = useState<string[]>([]);
+    const [paywallVisible, setPaywallVisible] = useState(false);
+    const { isPro } = useProStatus();
 
     // Save debouncing
     const saveTimeoutRef = useRef<any>(null);
@@ -695,7 +700,21 @@ export default function VideoPlayerScreen() {
         setPhaseMillis(positionMillis);
     };
 
+    const handleAutoDetectBpm = () => {
+        if (!isPro) {
+            void trackEvent('bpm_auto_detect_attempted', { videoId: videoItem?.id ?? null });
+            setPaywallVisible(true);
+            return;
+        }
+        Alert.alert('Coming soon', 'BPM auto-detect is coming in a future update.');
+    };
+
     const handleSaveBookmark = () => {
+        if (!isPro) {
+            void trackEvent('bookmark_create_attempted', { videoId: videoItem?.id ?? null });
+            setPaywallVisible(true);
+            return;
+        }
         if (!durationMillis) {
             Alert.alert("Bookmark Error", "Video duration is not available yet.");
             return;
@@ -715,6 +734,7 @@ export default function VideoPlayerScreen() {
             createdAt: Date.now(),
         };
         setLoopBookmarks((current) => [bookmark, ...current]);
+        void trackEvent('bookmark_created', { videoId: videoItem?.id ?? null });
     };
 
     const applyBookmark = (bookmark: LoopBookmark) => {
@@ -943,7 +963,6 @@ export default function VideoPlayerScreen() {
                         {showLoopUi && (
                             <View style={styles.section}>
                                 <View style={styles.sectionHeader}>
-                                    <Text style={styles.sectionTitle}>Loop</Text>
                                     <View style={styles.loopHeaderControls}>
                                         <Pressable
                                             style={styles.bpmToggle}
@@ -976,6 +995,10 @@ export default function VideoPlayerScreen() {
                                         <View style={styles.bpmTapRow}>
                                             <TapTempoButton onSetBpm={handleTapTempo} label="Tap Tempo" tone="dark" />
                                         </View>
+                                        <Pressable style={styles.autoDetectButton} onPress={handleAutoDetectBpm}>
+                                            <MaterialCommunityIcons name="waveform" size={16} color="#111" />
+                                            <Text style={styles.autoDetectText}>Auto Detect (Pro)</Text>
+                                        </Pressable>
                                     </View>
                                 )}
 
@@ -1188,6 +1211,7 @@ export default function VideoPlayerScreen() {
                     </ScrollView>
                 </KeyboardAvoidingView>
             )}
+            <PaywallModal visible={paywallVisible} onClose={() => setPaywallVisible(false)} />
         </View>
     );
 }
@@ -1341,7 +1365,7 @@ const styles = StyleSheet.create({
     sectionHeader: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'space-between',
+        justifyContent: 'flex-end',
         gap: 12,
     },
     loopHeaderControls: {
@@ -1349,11 +1373,6 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         gap: 8,
         flexWrap: 'wrap',
-    },
-    sectionTitle: {
-        fontSize: 14,
-        fontWeight: '700',
-        color: '#111',
     },
     bpmToggle: {
         flexDirection: 'row',
@@ -1511,6 +1530,23 @@ const styles = StyleSheet.create({
     },
     bpmTapRow: {
         alignItems: 'flex-start',
+    },
+    autoDetectButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingHorizontal: 10,
+        paddingVertical: 8,
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: '#ddd',
+        alignSelf: 'flex-start',
+        backgroundColor: '#fff',
+    },
+    autoDetectText: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: '#111',
     },
     loopLengthRow: {
         flexDirection: 'row',
