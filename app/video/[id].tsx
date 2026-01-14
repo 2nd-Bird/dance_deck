@@ -79,7 +79,6 @@ export default function VideoPlayerScreen() {
 
     // Metadata State (Notes)
     const [memo, setMemo] = useState("");
-    const [title, setTitle] = useState("");
     const [tags, setTags] = useState<string[]>([]);
     const [newTag, setNewTag] = useState("");
     const [availableTags, setAvailableTags] = useState<string[]>([]);
@@ -127,7 +126,6 @@ export default function VideoPlayerScreen() {
         if (found) {
             setVideoItem(found);
             setMemo(found.memo || "");
-            setTitle(found.title || "");
             setTags(found.tags || []);
             setBpm(Math.max(20, found.bpm || 120));
             setPhaseMillis(found.phaseMillis || 0);
@@ -174,7 +172,6 @@ export default function VideoPlayerScreen() {
             const updated = {
                 ...videoItem,
                 memo,
-                title,
                 tags,
                 bpm,
                 phaseMillis,
@@ -190,7 +187,7 @@ export default function VideoPlayerScreen() {
         return () => {
             if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
         };
-    }, [memo, title, tags, bpm, phaseMillis, loopLengthBeats, loopStartMillis, loopBookmarks, videoItem]);
+    }, [memo, tags, bpm, phaseMillis, loopLengthBeats, loopStartMillis, loopBookmarks, videoItem]);
 
     const LOOP_EPSILON_MS = 50;
     const LOOP_HANDLE_WIDTH = 24;
@@ -1152,16 +1149,6 @@ export default function VideoPlayerScreen() {
 
                         <View style={styles.section}>
                             <View style={styles.sectionDivider} />
-                            <View style={styles.metaRow}>
-                                <TextInput
-                                    style={styles.titleInput}
-                                    value={title}
-                                    onChangeText={setTitle}
-                                    placeholder="Video Title"
-                                    placeholderTextColor="#999"
-                                />
-                            </View>
-
                             {/* Tags */}
                             <View style={styles.tagsRow}>
                                 {tags.map((tag, i) => (
@@ -1395,14 +1382,6 @@ const styles = StyleSheet.create({
         backgroundColor: '#f8f8f8',
         borderWidth: 1,
         borderColor: '#eee',
-    },
-    metaRow: {
-        marginBottom: 10,
-    },
-    titleInput: {
-        fontSize: 20,
-        fontWeight: 'bold',
-        color: '#000',
     },
     tagsRow: {
         flexDirection: 'row',
