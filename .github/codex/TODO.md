@@ -32,9 +32,9 @@
   - Human ask: 公開URL確定 or 仮URL
 
 - [ ] (P0) PRIV-001 App Privacy inventory
-  - Status: TODO
+  - Status: DONE
   - SPEC refs: 追加仕様(Privacy) 5.x
-  - Next: データ送信有無を棚卸し→ docs/app_privacy.md と実装を整合
+  - Next: App Store Connect へ申告内容を入力
 
 ### P1 — Core UX (Loop / Timeline)
 - [ ] (P1) UX-LOOP-001 Loop操作がFreeで常に動作する（gating巻き込み防止）
@@ -62,5 +62,4 @@
 ---
 
 ## Last updated
-- YYYY-MM-DD HH:MM (by Codex)
-
+- 2026-01-14 21:43 (by Codex)
