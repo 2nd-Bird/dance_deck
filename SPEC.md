@@ -3,7 +3,122 @@ Dance Deck
 
 Beat-Synced Loop Player & Video Deck for Dancers
 
-追加仕様3：Video Detail UI – Overlay / Timeline / Bookmark Refinements
+追加仕様5: App Store申請・課金（RevenueCat前提） v1
+0. 用語（UI/機能パーツの呼称を固定）
+
+Free: 無料で使える範囲（InEightsの“基本”）
+
+Pro: 課金で解放される範囲（RevenueCat entitlement により制御）
+
+Paywall: Pro機能を触ろうとしたときに表示する購入画面（RevenueCat UI / 自前UIどちらでも可）
+
+Entitlement: RevenueCatの権限名。アプリはこれだけを信頼して機能の有効/無効を切り替える
+
+Bookmark: ループ区間・BPM等を保存する“Loop Bookmark”（既存のブックマーク機能）
+
+BPM Auto Detect: 音源解析でBPMを自動推定する機能（初版では未実装、将来Pro）
+
+1. 課金方針（初版）
+
+初版は 無料アプリとして公開し、アプリ内課金でProを提供する。
+
+Proの対象（有料化する機能）
+
+Loop Bookmarks（新規作成）
+
+BPM自動判定（BPM Auto Detect） ※初版は「Pro対象だが未実装」
+
+無料で提供する機能（例：InEightsのコア）
+
+手動BPM測定（Tap Tempo）
+
+8-count / eights 単位のループ操作（ループ窓、スナップ、長さボタン等）
+
+ローカル動画インポート、再生、ミラー、速度変更、タグ/メモ等（ただしBookmark新規作成はPro）
+
+注: App Store上の「無料で後から有料化」は一般に可能。ただし デジタル機能の解放はIAPを使う必要がある（ガイドラインのIn-App Purchase/サブスク規定に従う）。
+
+2. 価格とトライアル
+
+価格: 250円
+
+トライアル: 7日間無料
+
+RevenueCat前提の実装上の整理
+
+「7日無料」を実現するには、通常 “自動更新サブスク + 無料トライアル（intro offer）” を使う（＝買い切りIAPには“無料トライアル”概念が基本ないため）。
+
+よって、Proは Auto-Renewable Subscription（例: monthly ¥250, 7-day free trial） を前提として設計する。
+
+値上げ/値下げ:
+
+App Store Connect上で価格は後から変更可能（IAP/サブスクともに変更フローは存在）。
+
+※サブスクの価格変更はユーザー同意など条件が絡む場合があるので、値上げ運用は別途「価格変更ポリシー」節で扱う（初版では価格変更は行わない前提でもOK）。
+
+3. トライアル後のデータ保持ルール（重要）
+
+トライアル期間中に作成したBookmarkは、トライアル終了後も“閲覧・再生適用”は可能（ユーザー資産として保持）。
+
+ただし トライアル終了後に未課金の場合
+
+Bookmarkの新規作成・編集・削除は不可（Pro誘導）
+
+既存Bookmarkの**適用（再生開始/ループ範囲へジャンプ）**は可（※ここを不可にするかは要相談。不可にすると体験が悪く解約誘発しやすい）
+
+課金後（Pro有効）
+
+Bookmarkの新規作成/編集/削除が解放
+
+BPM Auto Detect（将来実装）が解放
+
+4. UI上の課金導線（落ちないための要件）
+
+Pro機能を触った瞬間にハードブロックしない。基本は “触ろうとした瞬間にPaywall”。
+
+Paywall表示トリガ例（最低限）
+
+Bookmarkの「追加/保存」押下時に ProでなければPaywall
+
+BPM Auto Detect の開始ボタン押下時に ProでなければPaywall（初版は“Coming soon (Pro)”でも可）
+
+Paywallには最低限以下を表示
+
+価格（¥250）と期間（例：月額）/ 7日無料
+
+「いつでもキャンセル可能」
+
+復元（Restore purchases）
+
+利用規約/プライバシーポリシー導線（URL）
+
+5. Data & Privacy（App Privacy対応）
+
+App Storeでは アプリのプライバシー情報（収集データ種別・追跡有無など）を App Store Connect に入力する必要がある。
+
+初版は「やみくも改善」を避け、導線のどこで落ちているかを計測可能にする
+
+例: paywall_shown, trial_started, trial_converted, trial_canceled, bookmark_create_attempted 等
+
+ただし、計測導入は App Privacy申告と整合させる（収集するなら何を収集して何に使うかを明示）。
+
+6. 初版スコープ（明確化）
+
+初版（App Store申請まで）で必ずやる
+
+RevenueCat導入（サブスク + 7日無料 + entitlement）
+
+Pro gating（Bookmark新規作成の制御、Restore、Paywall）
+
+App Privacy申告に必要な情報の整理
+
+初版ではやらない（次版）
+
+BPM Auto Detect の実装（ただし“Pro対象”として仕様だけ確定）
+
+価格変更運用（値上げ/値下げ運用ルール）
+
+追加仕様4：Video Detail UI – Overlay / Timeline / Bookmark Refinements
 1. Overlay 表示時の不要要素の削除
 1.1 動画タイトル表示
 
@@ -133,7 +248,7 @@ UI の形状・配置・挙動で意味を伝える
 
 
 
-以上追加仕様3
+以上追加仕様4
 
 追加仕様3：Video Player UI / Loop UX Improvements（Dance-Focused）
 0. 用語定義（重要・Codexは必ず参照）
