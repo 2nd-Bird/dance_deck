@@ -17,3 +17,4 @@
 2026-01-14 08:07 | feature/spec3-video-detail-refinements | SPEC 5.2 | ok | hide loop bookmark saved badge
 2026-01-14 14:40 | feature/longrun-20260114 | 追加仕様5:1,4,5,6 | ok | add paywall + pro gating scaffolding
 2026-01-14 14:44 | feature/longrun-20260114 | 追加仕様4:7 | ok | remove loop section header label
+2026-01-14 14:46 | feature/longrun-20260114 | 追加仕様5:5 | ok | add app privacy notes doc
