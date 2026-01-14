@@ -40,3 +40,8 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Codex autonomous run logs (non-merge artifacts)
+.github/codex/runs/
+.github/codex/RUNLOG.md
+.github/codex/RUNS_INDEX.md
