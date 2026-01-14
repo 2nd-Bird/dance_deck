@@ -963,7 +963,6 @@ export default function VideoPlayerScreen() {
                         {showLoopUi && (
                             <View style={styles.section}>
                                 <View style={styles.sectionHeader}>
-                                    <Text style={styles.sectionTitle}>Loop</Text>
                                     <View style={styles.loopHeaderControls}>
                                         <Pressable
                                             style={styles.bpmToggle}
@@ -1366,7 +1365,7 @@ const styles = StyleSheet.create({
     sectionHeader: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'space-between',
+        justifyContent: 'flex-end',
         gap: 12,
     },
     loopHeaderControls: {
@@ -1374,11 +1373,6 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         gap: 8,
         flexWrap: 'wrap',
-    },
-    sectionTitle: {
-        fontSize: 14,
-        fontWeight: '700',
-        color: '#111',
     },
     bpmToggle: {
         flexDirection: 'row',
