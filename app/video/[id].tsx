@@ -386,6 +386,18 @@ export default function VideoPlayerScreen() {
         return (clamped / width) * duration;
     };
 
+    const isTouchWithinLoopWindow = (x: number) => {
+        const width = timelineWidthRef.current;
+        const duration = durationRef.current;
+        if (width <= 0 || duration <= 0) return false;
+        const loopStart = loopStartRef.current;
+        const loopEnd = loopStart + loopDurationRef.current;
+        const startLeft = (loopStart / duration) * width;
+        const endLeft = (loopEnd / duration) * width;
+        const padding = LOOP_HANDLE_WIDTH;
+        return x >= startLeft - padding && x <= endLeft + padding;
+    };
+
     const displayPositionMillis = isScrubbing ? scrubPositionMillis : positionMillis;
 
     const playheadLeft = useMemo(() => {
@@ -410,10 +422,14 @@ export default function VideoPlayerScreen() {
 
     const playheadPanResponder = useRef(
         PanResponder.create({
-            onStartShouldSetPanResponder: () =>
-                durationRef.current > 0 && timelineWidthRef.current > 0,
-            onMoveShouldSetPanResponder: () =>
-                durationRef.current > 0 && timelineWidthRef.current > 0,
+            onStartShouldSetPanResponder: (event) =>
+                durationRef.current > 0
+                && timelineWidthRef.current > 0
+                && !isTouchWithinLoopWindow(event.nativeEvent.locationX),
+            onMoveShouldSetPanResponder: (event) =>
+                durationRef.current > 0
+                && timelineWidthRef.current > 0
+                && !isTouchWithinLoopWindow(event.nativeEvent.locationX),
             onPanResponderGrant: (event) => {
                 logTimelineTouch("playhead", "start", event);
                 setDebugActive("playhead", true);

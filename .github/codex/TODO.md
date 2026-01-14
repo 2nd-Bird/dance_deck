@@ -44,9 +44,9 @@
   - Verify: unit/integration + Expo Goで手動確認
 
 - [ ] (P1) UX-TL-001 Scrubber vs Loop Window ジェスチャ競合の解消
-  - Status: TODO
+  - Status: DONE
   - SPEC refs: Timeline/Loop用語セクション + 既存UI仕様
-  - Next: hitSlop/gesture priorityを整理、操作領域を分離
+  - Next: Expo Goでジェスチャ優先順位の体感確認
 
 - [ ] (P1) UX-SKIP-001 ダブルタップskip + フィードバック位置
   - Status: TODO
@@ -62,4 +62,4 @@
 ---
 
 ## Last updated
-- 2026-01-14 21:46 (by Codex)
+- 2026-01-14 21:49 (by Codex)

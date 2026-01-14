@@ -23,3 +23,4 @@
 2026-01-14 21:17 | feature/long-run-20260114 | SPEC 追加仕様3§4.3/追加仕様4§3 | blocked | needs Expo Go verification
 2026-01-14 21:43 | feature/priv-001-app-privacy | 追加仕様(Privacy) 5.x | ok | document app privacy inventory
 2026-01-14 21:46 | feature/priv-001-app-privacy | 追加仕様(課金) 2.4 | ok | add pro gating regression test
+2026-01-14 21:49 | feature/priv-001-app-privacy | Timeline/Loop gesture separation | ok | avoid scrubber capturing loop drags
