@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useCallback, useRef } from 'react';
 import { FlatList, StyleSheet, useWindowDimensions, ViewToken } from 'react-native';
 import { VideoItem } from '../types';
 import VideoTile from './VideoTile';
@@ -16,24 +16,42 @@ export default function VideoGrid({ videos, onViewableItemsChanged }: VideoGridP
     const hasLoggedLayout = useRef(false);
     const hasLoggedContentSize = useRef(false);
 
+    const renderItem = useCallback(
+        ({ item }: { item: VideoItem }) => {
+            if (__DEV__ && !hasLoggedRenderItem.current) {
+                hasLoggedRenderItem.current = true;
+                console.log(
+                    '[Home][FlatList][renderItem]',
+                    JSON.stringify({ firstId: item.id, thumbnailUri: item.thumbnailUri ?? null })
+                );
+            }
+            return <VideoTile video={item} width={tileWidth} />;
+        },
+        [tileWidth]
+    );
+
+    const getItemLayout = useCallback(
+        (_: ArrayLike<VideoItem> | null | undefined, index: number) => {
+            const row = Math.floor(index / numColumns);
+            return { length: tileWidth, offset: tileWidth * row, index };
+        },
+        [tileWidth, numColumns]
+    );
+
     return (
         <FlatList
             data={videos}
-            renderItem={({ item }) => {
-                if (__DEV__ && !hasLoggedRenderItem.current) {
-                    hasLoggedRenderItem.current = true;
-                    console.log(
-                        '[Home][FlatList][renderItem]',
-                        JSON.stringify({ firstId: item.id, thumbnailUri: item.thumbnailUri ?? null })
-                    );
-                }
-                return <VideoTile video={item} width={tileWidth} />;
-            }}
+            renderItem={renderItem}
             keyExtractor={(item) => item.id}
             numColumns={numColumns}
             contentContainerStyle={styles.container}
             onViewableItemsChanged={onViewableItemsChanged}
             viewabilityConfig={onViewableItemsChanged ? { itemVisiblePercentThreshold: 1 } : undefined}
+            getItemLayout={getItemLayout}
+            initialNumToRender={12}
+            maxToRenderPerBatch={12}
+            windowSize={5}
+            removeClippedSubviews
             onLayout={(event) => {
                 if (!__DEV__ || hasLoggedLayout.current) return;
                 hasLoggedLayout.current = true;

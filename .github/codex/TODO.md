@@ -55,11 +55,11 @@
 
 ### P2 — Polish / Performance
 - [ ] (P2) PERF-001 体感の重さ/メモリ/不要レンダ削減（見た目維持）
-  - Status: TODO
-  - Next: render profiling / memoization / FlatList最適化 / 画像サムネキャッシュなど
+  - Status: DONE
+  - Next: Expo Goでスクロール時の体感確認
   - Verify: FPS/JS frame drops をログ化（可能なら）
 
 ---
 
 ## Last updated
-- 2026-01-14 21:52 (by Codex)
+- 2026-01-14 21:55 (by Codex)
