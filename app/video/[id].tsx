@@ -76,6 +76,7 @@ export default function VideoPlayerScreen() {
     const tapTimeoutRef = useRef<any>(null);
     const lastTapRef = useRef(0);
     const videoLayoutRef = useRef({ width: 0, height: 0 });
+    const playControlCenterYRef = useRef<number | null>(null);
     const skipFeedbackAnim = useRef(new Animated.Value(0)).current;
 
     // Metadata State (Notes)
@@ -650,9 +651,11 @@ export default function VideoPlayerScreen() {
         const nextPosition = Math.min(Math.max(basePosition + delta, 0), duration);
         videoRef.current?.setPositionAsync(nextPosition);
         const fallbackY = locationY;
-        const overlayY = videoLayoutRef.current.height
-            ? videoLayoutRef.current.height * 0.5
-            : fallbackY;
+        const overlayY = playControlCenterYRef.current ?? (
+            videoLayoutRef.current.height
+                ? videoLayoutRef.current.height * 0.5
+                : fallbackY
+        );
         setSkipFeedback({
             x: locationX,
             y: overlayVisible ? overlayY : fallbackY,
@@ -864,7 +867,13 @@ export default function VideoPlayerScreen() {
                                 </View>
 
                                 {/* Middle Row: Play/Pause */}
-                                <View style={styles.middleControlRow}>
+                                <View
+                                    style={styles.middleControlRow}
+                                    onLayout={(event) => {
+                                        const { y, height } = event.nativeEvent.layout;
+                                        playControlCenterYRef.current = y + height / 2;
+                                    }}
+                                >
                                     <Pressable onPress={togglePlay} style={styles.bigPlayBtn}>
                                         <MaterialCommunityIcons name={isPlaying ? "pause-circle" : "play-circle"} size={isLandscape ? 60 : 72} color="white" />
                                     </Pressable>

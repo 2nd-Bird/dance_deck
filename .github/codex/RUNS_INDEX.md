@@ -24,3 +24,4 @@
 2026-01-14 21:43 | feature/priv-001-app-privacy | 追加仕様(Privacy) 5.x | ok | document app privacy inventory
 2026-01-14 21:46 | feature/priv-001-app-privacy | 追加仕様(課金) 2.4 | ok | add pro gating regression test
 2026-01-14 21:49 | feature/priv-001-app-privacy | Timeline/Loop gesture separation | ok | avoid scrubber capturing loop drags
+2026-01-14 21:52 | feature/priv-001-app-privacy | Double-tap skip feedback | ok | align feedback to play/pause height

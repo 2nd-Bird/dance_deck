@@ -49,9 +49,9 @@
   - Next: Expo Goでジェスチャ優先順位の体感確認
 
 - [ ] (P1) UX-SKIP-001 ダブルタップskip + フィードバック位置
-  - Status: TODO
+  - Status: DONE
   - SPEC refs: UI追記（ダブルタップ/フィードバック高さ）
-  - Next: 左/右double tapで±5s、波紋＋テキスト、表示位置は再生アイコンと同じ高さ
+  - Next: Expo Goでフィードバック位置の体感確認
 
 ### P2 — Polish / Performance
 - [ ] (P2) PERF-001 体感の重さ/メモリ/不要レンダ削減（見た目維持）
@@ -62,4 +62,4 @@
 ---
 
 ## Last updated
-- 2026-01-14 21:49 (by Codex)
+- 2026-01-14 21:52 (by Codex)
