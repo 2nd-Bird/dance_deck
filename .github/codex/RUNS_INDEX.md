@@ -20,3 +20,4 @@
 2026-01-14 14:46 | feature/longrun-20260114 | 追加仕様5:5 | ok | add app privacy notes doc
 2026-01-14 16:00 | feature/spec-gap-1 | 追加仕様3 §4.3 / 追加仕様4 §3 | ok | Loop toggle label now action-only
 2026-01-14 21:12 | feature/long-run-20260114 | SPEC 3.2.1 | pass | remove video title input
+2026-01-14 21:17 | feature/long-run-20260114 | SPEC 追加仕様3§4.3/追加仕様4§3 | blocked | needs Expo Go verification
