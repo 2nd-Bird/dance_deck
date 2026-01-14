@@ -1,6 +1,8 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { trackEvent } from '@/services/analytics';
-import { configurePurchases, getCustomerInfoSafe, getProStatusFromInfo } from '../services/purchases';
+import { getCustomerInfoSafe } from '../services/purchases';
+import { getProStatusFromInfo } from '../services/proStatus';
+import { initializeRevenueCat } from '../services/revenuecat';
 
 interface ProContextValue {
   isPro: boolean;
@@ -36,7 +38,7 @@ export const ProProvider = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     let cancelled = false;
     const init = async () => {
-      const status = await configurePurchases();
+      const status = await initializeRevenueCat();
       if (cancelled) return;
       setHasConfig(status.hasConfig);
       if (!status.hasConfig) {

@@ -10,7 +10,7 @@ export const configurePurchases = async (): Promise<PurchasesConfigStatus> => ({
 
 export const getCustomerInfoSafe = async () => null;
 export const getOfferingsSafe = async () => null;
+export const getDefaultOfferingSafe = async () => null;
 export const purchasePackageSafe = async () => null;
 export const restorePurchasesSafe = async () => null;
-export const getProStatusFromInfo = () => false;
 export const getEntitlementId = () => 'pro';
