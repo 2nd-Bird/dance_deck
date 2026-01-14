@@ -896,7 +896,7 @@ export default function VideoPlayerScreen() {
                                                 size={24}
                                                 color={loopEnabled ? "#FF0000" : "white"}
                                             />
-                                            <Text style={styles.toolText}>{loopEnabled ? "Loop On" : "Loop Off"}</Text>
+                                            <Text style={styles.toolText}>Loop</Text>
                                         </Pressable>
                                     </View>
                                 </View>
