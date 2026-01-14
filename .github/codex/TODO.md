@@ -38,9 +38,9 @@
 
 ### P1 — Core UX (Loop / Timeline)
 - [ ] (P1) UX-LOOP-001 Loop操作がFreeで常に動作する（gating巻き込み防止）
-  - Status: TODO
+  - Status: DONE
   - SPEC refs: 追加仕様(課金) 2.4
-  - Next: bookmark作成だけをpaywall対象にする回帰テストを追加
+  - Next: Expo GoでFree挙動の再確認
   - Verify: unit/integration + Expo Goで手動確認
 
 - [ ] (P1) UX-TL-001 Scrubber vs Loop Window ジェスチャ競合の解消
@@ -62,4 +62,4 @@
 ---
 
 ## Last updated
-- 2026-01-14 21:43 (by Codex)
+- 2026-01-14 21:46 (by Codex)

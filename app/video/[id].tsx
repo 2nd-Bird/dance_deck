@@ -2,6 +2,7 @@ import LibraryTile from "@/components/LibraryTile";
 import PaywallModal from "@/components/PaywallModal";
 import TapTempoButton from "@/components/TapTempoButton";
 import { useProStatus } from "@/contexts/ProContext";
+import { isProRequired } from "@/services/proGating";
 import { trackEvent } from "@/services/analytics";
 import { getVideos, updateVideo } from "@/services/storage";
 import { LoopBookmark, VideoItem } from "@/types";
@@ -698,7 +699,7 @@ export default function VideoPlayerScreen() {
     };
 
     const handleAutoDetectBpm = () => {
-        if (!isPro) {
+        if (isProRequired("bpm_auto_detect") && !isPro) {
             void trackEvent('bpm_auto_detect_attempted', { videoId: videoItem?.id ?? null });
             setPaywallVisible(true);
             return;
@@ -707,7 +708,7 @@ export default function VideoPlayerScreen() {
     };
 
     const handleSaveBookmark = () => {
-        if (!isPro) {
+        if (isProRequired("bookmark_create") && !isPro) {
             void trackEvent('bookmark_create_attempted', { videoId: videoItem?.id ?? null });
             setPaywallVisible(true);
             return;
