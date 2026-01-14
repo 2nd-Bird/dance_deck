@@ -15,3 +15,4 @@
 2025-12-25 08:05 | feature/spec3-video-detail-refinements | SPEC追加仕様3 | ok | overlay toolbar + bookmarks + headers
 2025-12-25 08:08 | feature/spec3-video-detail-refinements | SPEC 3.3.5 | ok | snap loop range to beat on release
 2026-01-14 08:07 | feature/spec3-video-detail-refinements | SPEC 5.2 | ok | hide loop bookmark saved badge
+2026-01-14 14:40 | feature/longrun-20260114 | 追加仕様5:1,4,5,6 | ok | add paywall + pro gating scaffolding
