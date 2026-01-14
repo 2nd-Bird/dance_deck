@@ -1101,6 +1101,7 @@ export default function VideoPlayerScreen() {
                                 <LibraryTile
                                     width={bookmarkTileSize}
                                     thumbnailUri={videoItem.thumbnailUri}
+                                    showVideoBadge={false}
                                     onPress={handleSaveBookmark}
                                 >
                                     <View style={[styles.bookmarkOverlay, styles.bookmarkOverlayPrimary]}>
@@ -1113,6 +1114,7 @@ export default function VideoPlayerScreen() {
                                         key={bookmark.id}
                                         width={bookmarkTileSize}
                                         thumbnailUri={bookmarkThumbs[bookmark.id] || videoItem.thumbnailUri}
+                                        showVideoBadge={false}
                                         onPress={() => applyBookmark(bookmark)}
                                     >
                                         <View style={styles.bookmarkOverlay}>
