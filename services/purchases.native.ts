@@ -1,6 +1,6 @@
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
-import Purchases, { CustomerInfo, PurchasesOffering, PurchasesPackage } from 'react-native-purchases';
+import Purchases, { CustomerInfo, LOG_LEVEL, PurchasesOffering, PurchasesPackage } from 'react-native-purchases';
 
 export interface PurchasesConfigStatus {
   configured: boolean;
@@ -16,11 +16,10 @@ const getApiKey = () => {
   const extra = getExtraConfig();
   const iosKey = typeof extra.revenueCatApiKeyIos === 'string' ? extra.revenueCatApiKeyIos : '';
   const androidKey = typeof extra.revenueCatApiKeyAndroid === 'string' ? extra.revenueCatApiKeyAndroid : '';
-  const fallbackKey = typeof extra.revenueCatApiKey === 'string' ? extra.revenueCatApiKey : '';
   return Platform.select({
-    ios: iosKey || fallbackKey,
-    android: androidKey || fallbackKey,
-    default: fallbackKey,
+    ios: iosKey,
+    android: androidKey,
+    default: '',
   }) ?? '';
 };
 
@@ -34,12 +33,21 @@ export const getEntitlementId = () => {
 let hasConfigured = false;
 
 export const configurePurchases = async (): Promise<PurchasesConfigStatus> => {
+  if (__DEV__) {
+    Purchases.setLogLevel(LOG_LEVEL.VERBOSE);
+  }
   const apiKey = getApiKey();
   if (!apiKey) {
     return { configured: false, hasConfig: false };
   }
   if (!hasConfigured) {
-    Purchases.configure({ apiKey });
+    if (Platform.OS === 'ios') {
+      Purchases.configure({ apiKey });
+    } else if (Platform.OS === 'android') {
+      Purchases.configure({ apiKey });
+    } else {
+      Purchases.configure({ apiKey });
+    }
     hasConfigured = true;
   }
   return { configured: true, hasConfig: true };
@@ -72,6 +80,20 @@ export const getOfferingsSafe = async (): Promise<PurchasesOffering | null> => {
   }
 };
 
+export const getDefaultOfferingSafe = async (): Promise<PurchasesOffering | null> => {
+  const status = await configurePurchases();
+  if (!status.configured) return null;
+  try {
+    const offerings = await Purchases.getOfferings();
+    return offerings.all?.default ?? offerings.current ?? null;
+  } catch (error) {
+    if (__DEV__) {
+      console.warn('Failed to load default offering', error);
+    }
+    return null;
+  }
+};
+
 export const purchasePackageSafe = async (pkg: PurchasesPackage): Promise<CustomerInfo | null> => {
   const status = await configurePurchases();
   if (!status.configured) return null;
@@ -97,10 +119,4 @@ export const restorePurchasesSafe = async (): Promise<CustomerInfo | null> => {
     }
     return null;
   }
-};
-
-export const getProStatusFromInfo = (info: CustomerInfo | null): boolean => {
-  if (!info) return false;
-  const entitlementId = getEntitlementId();
-  return Boolean(info.entitlements.active[entitlementId]);
 };
