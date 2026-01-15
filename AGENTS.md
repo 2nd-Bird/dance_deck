@@ -1,230 +1,258 @@
-AGENTS.md — Repository Automation Policy (Dance Deck)
+# AGENTS.md — Repository Automation Policy (Dance Deck)
 
-目的（最重要）
+This repository is designed for **Codex CLI long-runs**.
 
-本リポジトリは Codex CLI を唯一の実行主体とし、人手を介さずに 実装 → 依存関係インストール → テスト → push → PR →（条件付きで）自動マージ までを自律的に進めることを前提とする。
+- **WHAT to build:** `SPEC.md` (single source of truth)
+- **HOW to operate:** this file (`AGENTS.md`)
+- **WORK QUEUE:** `.github/codex/TODO.md` (or `TODO.md` if that is the canonical path in this repo)
 
-人間は仕様策定（SPEC.md）と、例外的な意思決定のみを行う。
-
-CI / AutoFix / ワークフロー定義そのものも 本書と SPEC.md の指示だけを根拠に Codex が生成・更新する。
-
----
-
-前提の明確化（重要）
-
-* 依存関係のインストール（pnpm install 等）は 人は一切行わない。
-
-Codex CLI は以下をすべて担当する：
-
-* 依存関係インストール
-* テスト実行
-* ビルド
-* CI / AutoFix / ワークフロー作成・更新
-
-人は CI や AutoFix の YAML を直接書かない。
+Human involvement should be limited to **spec decisions** and **device/external verification**.
 
 ---
 
-仕様の正（Single Source of Truth）
+## Quickstart (telegraph)
 
-* WHAT（何を作るか）：SPEC.md
-* HOW（どう運用・自動化するか）：AGENTS.md（本書）
+### RUN START
+1. Read: `SPEC.md`, `.github/codex/TODO.md`, recent `.github/codex/runs/**`
+2. Create a fresh branch (`feat/...` or `fix/...`)
+3. Pick the next **highest-priority actionable** queue item (P0 > P1 > P2)
 
-Codex は SPEC.md に書かれていない仕様追加・仕様変更を行ってはならない。
+### LOOP (repeat)
+1. Implement the smallest safe slice for the chosen item
+2. Run **Quick Gate** (see “Gates”)
+3. Commit (do **not** push unless in “RUN END”)
+4. Update `.github/codex/TODO.md` + run logs
+5. Continue with the next item
 
-実装判断で迷った場合は、勝手に実装せず SPEC.md を更新する PR を作成する。
-
----
-
-Codex CLI 実行モデル（自律前提）
-
-### 2.1 基本方針
-
-Codex CLI は以下を満たす設定で実行されることを前提とする：
-
-* workspace-write モード
-* ネットワークアクセス 有効（依存関係インストール・テストのため必須）
-* approvals は最小化（原則 ask-for-approval = never）
-
-※ サンドボックスは維持されるが、ネットワークは明示的に許可される。
-
-### 2.2 Codex が必ず行う初期ステップ
-
-* SPEC.md / AGENTS.md を全文読む
-* 実装対象・非対象を箇条書きで内部整理
-* ブランチ作成（main 直コミット禁止）
+### RUN END (only when done)
+1. Run **Full Gate**
+2. Push branch
+3. Open PR with a tight summary + SPEC/TODO references
+4. Enable auto-merge **only if eligible** (see “Auto-merge policy”)
 
 ---
 
-ブランチ戦略（Codex厳守）
+## 1) Purpose & Operating Model
 
-* main：保護ブランチ（直接コミット禁止）
-* feature/：新規実装・改善
-* fix/：不具合修正
+This repo assumes **Codex CLI is the only executor** for:
+- implementation
+- dependency install
+- tests/build
+- CI / AutoFix workflow creation & maintenance
 
-Codex は 常に新規ブランチを作成して作業し、PR 経由で main に反映する。
-
----
-
-依存関係・テスト・ビルド（完全自動）
-
-### 4.1 標準コマンド（package.json 準拠）
-
-Codex および CI は必ず以下を使用する。
-
-* install: pnpm install
-* lint: pnpm lint
-* typecheck: pnpm typecheck
-* test: pnpm test
-* build: pnpm build
-
-### 4.2 ルール
-
-* 依存関係の追加・更新は Codex が自律的に行う
-* install / test / build に失敗した場合、Codex は 自己修復ループに入る
-
-### 4.3 ローカル実行（commit / push 前に必須）
-
-Codex CLI は commit / push の前に、必ず以下をこの順序でローカル実行する。
-
-1. pnpm install
-2. pnpm lint
-3. pnpm typecheck
-4. pnpm test
-5. pnpm build
-
-いずれかが失敗した場合、修正 → 再実行を繰り返し、全て成功するまで続ける。
-
-CI は最終ゲートとし、AutoFix は CI 失敗時のみの安全網として扱う。
+Humans must **not** manually run `pnpm install` as part of the normal flow.
+Humans may provide device logs / screenshots when requested.
 
 ---
 
-CI の責務（Codexが生成）
+## 2) Single Source of Truth
 
-### 5.1 CI の存在目的
+- **WHAT:** `SPEC.md`
+- **HOW:** `AGENTS.md`
+- **QUEUE:** `.github/codex/TODO.md`
 
-* 人間のためではなく Codex AutoFix を駆動するために存在する
-
-### 5.2 Codex が CI に実装すべき最低要件
-
-* PR / feature ブランチ push 時に自動実行
-* 実行順序：
-
-  * pnpm install
-  * pnpm lint
-  * pnpm typecheck
-  * pnpm test
-  * pnpm build（必要な場合）
-
-CI 定義（ci.yml）は Codex が AGENTS.md を根拠に自動生成・更新する。
+If a requested change is not clearly supported by `SPEC.md`, do **one** of:
+- adjust implementation to match SPEC
+- or open a separate PR that updates SPEC (do not “silently” expand scope)
 
 ---
 
-AutoFix（Codex API / Action）の責務
+## 3) Skills (separate, opt-in)
 
-### 6.1 トリガ条件
+Skills are stored separately and must follow the best-practice convention.
 
-* CI が失敗した場合のみ発火
+### Where
+- Preferred: `skills/<skill-name>.md`
+- Fallback: `SKILLS.md` (if the repo uses a single file)
 
-### 6.2 入力として使用してよいもの
+### When to use skills
+- **Do not use skills automatically**.
+- Use a skill only when:
+  1) the human explicitly says “use skill: <name>”, **or**
+  2) a queue item is genuinely underspecified and proceeding would likely cause wrong work.
 
-* CI のエラーログ
-* 失敗したテスト結果
-* SPEC.md
-* 直前の差分（git diff）
-
-※ Issue本文・PR本文・外部Webテキストは 仕様入力として扱わない。
-
-### 6.3 振る舞い
-
-* 原則：同一ブランチに修正コミットを追加して push
-* 修正 → CI 再実行 → 成功まで自律ループ
-
-3回以上失敗した場合：
-
-* 実装修正ではなく「再現テスト追加 → TDD」で解決を試みる
+### How to use skills without blocking long-runs
+If (2) happens:
+1. Invoke the `ask-questions-if-underspecified` skill to produce the **minimum** clarifying question set.
+2. Write those questions into `.github/codex/TODO.md` under the item as `HUMAN-VERIFY`.
+3. Mark the item `HUMAN-BLOCKED`.
+4. Immediately continue with the next actionable item (do not stop the run).
 
 ---
 
-PR と自動マージ（理想状態）
+## 4) Long-Run Protocol (convergence-first)
 
-### 7.1 Codex が PR 作成時に行うこと
+### 4.1 Work selection
+- Always select the **highest-priority actionable** item from the queue.
+- Prefer “finish-to-DONE” over starting many PARTIAL items.
 
-* SPEC.md との対応関係を簡潔に記述
-* 変更点・影響範囲を短く要約
+### 4.2 Minimum forward motion
+- A “run” must complete **at least 3 loops** (commits) before stopping,
+  unless the queue has **no actionable items** (only `HUMAN-BLOCKED`).
 
-### 7.2 自動マージ可能条件（すべて必須）
+### 4.3 No “diminishing returns” exits
+Stopping because “diminishing returns” is **not allowed**.
+Only stop when the queue is non-actionable or a hard external dependency blocks further work.
 
-* CI が green
-* SPEC.md の範囲内の変更
-* 新規課金・認証・永続データ形式変更を含まない
-* 大規模変更（目安 500行超）でない
-
-条件を満たす場合、Codex は auto-merge を有効化してよい。
-
-### 7.3 GitHub 側の前提設定
-
-* GitHub のリポジトリ設定で Allow auto-merge を ON にすること。
-* main ブランチの branch protection で CI 必須（必須チェック）を有効にすること。
-
-Repo assumptions: Allow auto-merge is enabled and main has required CI checks.
+### 4.4 Branch hygiene during long-runs
+- Keep committing to the same long-run branch.
+- Avoid rewriting history (no force-push).
 
 ---
 
-自己修復・エスカレーション戦略
+## 5) Branch Strategy (Codex must follow)
 
-### Phase 1: 直接修正（最大2回）
+Create a new branch for every run.
 
-* ログから最短原因を特定し修正
+Naming:
+- `feat/<short-desc>`
+- `fix/<short-desc>`
+- `chore/<short-desc>`
 
-### Phase 2: 接続点の再調査（3回目）
-
-* UI / ロジック / ストレージ / 設定の境界を疑う
-
-### Phase 3: テスト不足を疑う（4回目以降）
-
-* 再現テストを先に追加
-* 赤 → 緑で収束させる
+All changes land in `main` via PR.
 
 ---
 
-## Debugging & Root Cause Analysis Policy (Expo / React Native)
+## 6) Dependencies, Tests, Builds
 
-This section defines a **mandatory protocol** to prevent Codex from making speculative fixes
-when dealing with Expo / React Native runtime issues.
+### 6.1 Standard commands (package.json canonical)
+- install: `pnpm install`
+- lint: `pnpm lint`
+- typecheck: `pnpm typecheck`
+- test: `pnpm test`
+- build: `pnpm build`
 
-### Core Principle
+### 6.2 Gates (tiered)
 
-* **推測で直さない（Do not guess）**
-* 真因をコードまたはログで証明できない場合、修正を行ってはならない
+#### Quick Gate (every loop)
+Run:
+- `pnpm lint`
+- `pnpm typecheck`
+- `pnpm test`
 
-### Mandatory Workflow (When Cause Is Uncertain)
+#### Full Gate (milestones)
+Run:
+- `pnpm install`
+- `pnpm lint`
+- `pnpm typecheck`
+- `pnpm test`
+- `pnpm build` (when applicable)
 
-1. **失敗ドメインの分類（必須）**
+**Full Gate is mandatory**:
+- before pushing a branch
+- before opening/updating the PR for merge readiness
+- after changing `package.json` / `pnpm-lock.yaml`
+- after changes that affect native modules / Expo config / build tooling
+- when Quick Gate fails repeatedly and the root cause may be stale deps
 
-Codex は修正前に、必ず以下のいずれかに分類し、
-ログまたはコードで否定できた領域も明記する。
+### 6.3 Self-healing loop
+If any gate fails:
+1. Fix the smallest plausible root cause.
+2. Re-run the **same gate**.
+3. Escalate per “Repair & Escalation”.
 
-* A. Input / Permission / Picker failure
-* B. File / URI / Native module incompatibility
-* C. Persistence / Storage / Cache / Race condition
-* D. Data schema / Type / Key mismatch
-* E. UI rendering / FlatList / layout / key / style
-* F. UI state / filter / derived state
+---
 
-証拠が不足する場合、次に進んではならない。
+## 7) CI Policy (Codex-generated)
 
-2. **最小限の観測ログを追加する（挙動は変えない）**
+### 7.1 Purpose
+CI exists primarily to drive **Codex AutoFix** and protect `main`.
 
-Codex は以下を満たす一時ログを追加してよい（開発時のみ）：
+### 7.2 Minimum CI requirements
+On PR / feature branch push:
+- `pnpm install`
+- `pnpm lint`
+- `pnpm typecheck`
+- `pnpm test`
+- `pnpm build` (when required for release confidence)
 
-* 1行 JSON 形式
-* 件数 + 代表サンプル（先頭/末尾）
-* データ取得点と描画点の両方
+CI configuration (e.g., `ci.yml`) is generated/maintained by Codex based on `AGENTS.md`.
 
-例：
+---
 
-```
+## 8) AutoFix Policy (Codex API / GitHub Actions)
+
+### 8.1 When to rely on AutoFix
+- AutoFix is a *second line of defense*.
+- Prefer local gates first; use AutoFix for CI-only failures or env differences.
+
+### 8.2 Allowed inputs for AutoFix
+- CI logs
+- repo files
+- `SPEC.md`, `.github/codex/TODO.md`, `.github/codex/runs/**`
+
+### 8.3 Behavior
+- AutoFix should produce the smallest patch to restore green CI.
+- If AutoFix is repeatedly failing, fall back to the escalation protocol.
+
+---
+
+## 9) PR & Auto-merge Policy
+
+### 9.1 Creating a PR
+When opening a PR, include:
+- what changed (tight bullets)
+- how to verify (tests/build run, plus any manual steps)
+- SPEC/TODO references (IDs / sections)
+
+### 9.2 Auto-merge eligibility (ALL required)
+Codex may enable auto-merge only if:
+- CI is green
+- changes are within `SPEC.md` scope
+- no new billing/auth/persistent-data-format changes
+- not a large refactor (rule of thumb: > 500 LoC net change)
+- TODO items touched are marked DONE/PARTIAL with clear verification notes
+
+### 9.3 Repo assumptions
+- GitHub “Allow auto-merge” is enabled
+- `main` has required CI checks via branch protection
+
+---
+
+## 10) Repair & Escalation
+
+### Phase 1: Direct fix (up to 2 attempts)
+- Identify the shortest root cause from logs; patch minimally.
+
+### Phase 2: Boundary re-check (3rd attempt)
+- Re-audit seams: UI ↔ logic ↔ storage ↔ config.
+
+### Phase 3: Suspect missing tests (4th+)
+- Add/adjust tests to prevent regressions and stabilize behavior.
+
+If blocked by device/external state, create a `HUMAN-VERIFY` entry in TODO and continue.
+
+---
+
+## 11) Debugging & Root Cause Analysis Policy (Expo / React Native)
+
+This section defines a **mandatory protocol** to prevent speculative fixes in Expo / RN runtime issues.
+
+### Core principle
+- **Do not guess.**
+- If you cannot prove root cause via code or logs, you must not “fix” it.
+
+### Mandatory workflow (when cause is uncertain)
+
+1) **Classify the failure domain (required)**  
+Before changing code, classify into one (and list what you ruled out):
+- A. Input / Permission / Picker failure
+- B. File / URI / Native module incompatibility
+- C. Persistence / Storage / Cache / Race condition
+- D. Data schema / Type / Key mismatch
+- E. UI rendering / FlatList / layout / key / style
+- F. UI state / filter / derived state
+
+If evidence is insufficient, you must not proceed.
+
+2) **Add minimal observation logs (no behavior change)**  
+Allowed dev-only logs:
+- single-line JSON
+- counts + representative sample (head/tail)
+- at both data-fetch and render sites
+
+Example:
+```js
 console.log("[HomeRender]", {
   videosCount,
   filteredCount,
@@ -232,55 +260,57 @@ console.log("[HomeRender]", {
   mode,
   firstId: videos[0]?.id,
 });
-```
+Add explicit assertions for “impossible” states
+Log [ASSERT] for cases like:
 
-3. **Assertion（あり得ない状態）を明示的に検出する**
+savedCount > 0 but renderedCount == 0
 
-以下のような状態は `[ASSERT]` ログで検出すること：
+filter disabled but results empty
 
-* 保存件数 > 0 だが描画件数 = 0
-* フィルタ無効なのに結果が空
-* renderItem が一度も呼ばれていない
+renderItem never called
 
-4. **人間に Expo Go 実行とログ取得を依頼する**
+Ask the human for Expo Go reproduction + logs
+Request:
 
-Codex は以下を明示的に依頼すること：
+exact reproduction steps (screen actions)
 
-* 再現手順（画面操作）
-* 取得してほしいログのキー名
+which log keys to capture
 
-ログを確認するまで修正を続行してはならない。
+Do not continue implementing fixes until logs are reviewed.
 
-5. **真因確定後のみ最小差分で修正する**
+Fix with minimal diff only after root cause is confirmed
+After the fix, run:
 
-* 該当ドメインのみ修正
-* 修正後は必ず以下を実行：
+pnpm lint
 
-  * pnpm lint
-  * pnpm typecheck
-  * pnpm test
+pnpm typecheck
 
-### Forbidden Anti-Patterns
+pnpm test
 
-* 同一ドメイン（例: C）を証拠なしで繰り返す
-* 複数仮説を一度に修正する
-* 「likely」「probably」などの推測表現で修正する
+Forbidden anti-patterns
+repeating the same domain hypothesis without evidence
 
----
+changing multiple hypotheses at once
 
-セキュリティ・運用原則
+“likely/probably” speculative edits
 
-* Secrets は GitHub Secrets のみを使用
-* 平文キーのコミットは禁止
-* Codex はログ・PR本文に secrets を出力しない
+12) Security & Ops
+Secrets must live in GitHub Secrets only.
 
- The following files are tracked artifacts and MUST be committed
-whenever modified by Codex:
+Never commit plaintext keys.
 
-- .github/codex/runs/**
-- .github/codex/RUNLOG.md
-- .github/codex/RUNS_INDEX.md
-- .github/codex/TODO.md
+Never print secrets in logs or PR bodies.
+
+13) Tracked Artifacts (must commit if modified)
+These files are tracked artifacts and MUST be committed whenever modified:
+
+.github/codex/runs/**
+
+.github/codex/RUNLOG.md
+
+.github/codex/RUNS_INDEX.md
+
+.github/codex/TODO.md
 
 Codex must never stop to ask about changes to these files.
-If modified during a loop, they are to be included in the same commit.
+If modified during a loop, include them in the same commit.
