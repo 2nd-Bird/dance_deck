@@ -25,6 +25,16 @@
   - Next: envキーを受け取ったら Dev Client で purchase/restore を通す
   - Human ask: RevenueCat iOS API key / entitlementId / offeringId
 
+- [ ] (P0) RC-VERIFY-001 RevenueCat 実機検証（Dev Client）
+  - Status: HUMAN-VERIFY
+  - SPEC refs: 追加仕様5.1
+  - Next: EAS Dev Client で paywall/purchase/restore を実機確認
+  - Human ask: 端末で以下を実行し結果共有
+    - eas build --profile development --platform ios
+    - TestFlight または dev client 起動
+    - Paywall表示 → 購入 → entitlement "pro" 反映
+    - Restore purchases → entitlement "pro" 反映
+
 - [ ] (P0) LEGAL-001 Terms/Privacy URL
   - Status: HUMAN-BLOCKED
   - SPEC refs: 追加仕様(法務) 4.x
