@@ -33,6 +33,20 @@
     "plugins": ["expo-router"],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "revenueCatApiKeyIos": "",
+      "revenueCatApiKeyAndroid": "",
+      "revenueCatEntitlementId": "pro",
+      "termsUrl": "",
+      "privacyUrl": "",
+      "paywallPriceLabel": "",
+      "paywallPeriodLabel": "",
+      "paywallTrialLabel": "",
+      "router": {},
+      "eas": {
+        "projectId": "beeb91b9-4bdc-41d0-8560-158a51491b16"
+      }
     }
   }
 }
