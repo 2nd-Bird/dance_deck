@@ -27,3 +27,4 @@
 2026-01-14 21:52 | feature/priv-001-app-privacy | Double-tap skip feedback | ok | align feedback to play/pause height
 2026-01-14 21:55 | feature/priv-001-app-privacy | PERF-001 | ok | optimize home FlatList rendering
 2026-01-16 07:08 | feature/revcat-device-verify | RC-VERIFY-001 | pass | add RevenueCat device verification steps
+2026-01-19 07:38 | feature/loop-20260114-001 | UX-TL-LOOP-002 | pass | keep loop drag ref for snap

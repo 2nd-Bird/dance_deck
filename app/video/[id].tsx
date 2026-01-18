@@ -572,6 +572,7 @@ export default function VideoPlayerScreen() {
                 const length = loopDragStart.current.end - loopDragStart.current.start;
                 let nextStart = loopDragStart.current.start + delta;
                 nextStart = Math.min(Math.max(nextStart, 0), Math.max(0, duration - length));
+                loopStartRef.current = nextStart;
                 setLoopStartMillis(nextStart);
             },
             onPanResponderRelease: () => {

@@ -47,7 +47,7 @@
   - Next: App Store Connect へ申告内容を入力
 
 - [ ] (P0) UX-TL-LOOP-002 ループ窓（range）が0:00に吸い付き移動できない
-  - Status: TODO
+  - Status: PARTIAL
   - Impact: コア価値（8-countループ練習）が成立しない
   - Expect:
     - ループ窓（中央ドラッグ/左右ハンドル）がドラッグ量に応じて連続的に移動する
@@ -64,6 +64,7 @@
     - ...
     - [TimelineTouch] {"dx": 105, "dy": -2.6666, "phase": "move", "target": "range", "x": 73.9999, "y": 15.3333}
     - [TimelineTouch] {"dx": undefined, "dy": undefined, "phase": "end", "target": "range", "x": undefined, "y": undefined}
+  - Next: iOS Dev Clientでループ窓ドラッグが0:00に戻らないことを確認
 
 - [ ] (P0) RC-PAYWALL-001 Bookmark保存時のPaywallが想定と違い、"default offering has no configured paywall" が出る
   - Status: TODO
