@@ -87,7 +87,7 @@
   - Next: Dev ClientでPaywall表示時にcurrent offeringのPaywallが出るか確認
 
 - [ ] (P0) UX-TL-HIT-001 4 counts のループ窓が小さすぎて操作困難（操作性上の実質バグ）
-  - Status: TODO
+  - Status: PARTIAL
   - Impact: 4 counts が実用にならず、練習導線が途切れる
   - Expect:
     - 4eights/2eights/1eight/4count の順で窓長が変わるのはOK
@@ -101,6 +101,7 @@
     3) 4countの窓が小さく操作が困難
   - Notes:
     - 表示スケール（ズーム/表示範囲）を窓長に合わせて調整したい（案）
+  - Next: iOS Dev Clientで4countでもドラッグしやすい最小タッチ領域か確認
 
 - [ ] (P0) UX-TL-SMOOTH-001 ループ窓/左右端の移動を iOS写真アプリ同様に mm:ss:XX 精度で滑らかにしたい（仕様追加の要否確認）
   - Status: TODO (spec-clarify)
@@ -181,4 +182,4 @@
 ---
 
 ## Last updated
-- 2026-01-19 07:40 (by Codex)
+- 2026-01-19 07:43 (by Codex)

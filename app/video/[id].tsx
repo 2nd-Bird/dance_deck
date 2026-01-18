@@ -419,7 +419,16 @@ export default function VideoPlayerScreen() {
         return Math.min(Math.max(rawLeft, 0), timelineWidth);
     }, [durationMillis, timelineWidth, loopEndMillis]);
 
+    const MIN_LOOP_TOUCH_WIDTH = 44;
     const loopRangeWidth = Math.max(0, loopEndLeft - loopStartLeft);
+    const loopRangeTouchWidth = Math.min(
+        timelineWidth,
+        Math.max(loopRangeWidth, MIN_LOOP_TOUCH_WIDTH)
+    );
+    const loopRangeTouchLeft = Math.min(
+        Math.max(loopStartLeft - (loopRangeTouchWidth - loopRangeWidth) / 2, 0),
+        Math.max(0, timelineWidth - loopRangeTouchWidth)
+    );
 
     const playheadPanResponder = useRef(
         PanResponder.create({
@@ -1085,6 +1094,18 @@ export default function VideoPlayerScreen() {
                                         />
                                         <View
                                             style={[
+                                                styles.loopRangeHitArea,
+                                                DEBUG_TIMELINE_TOUCH && styles.loopRangeHitAreaDebug,
+                                                debugTouchActive.range && styles.loopRangeHitAreaDebugActive,
+                                                {
+                                                    left: loopRangeTouchLeft,
+                                                    width: loopRangeTouchWidth,
+                                                },
+                                            ]}
+                                            {...loopRangePanResponder.panHandlers}
+                                        />
+                                        <View
+                                            style={[
                                                 styles.loopRange,
                                                 activeLoopDrag && styles.loopRangeActive,
                                                 DEBUG_TIMELINE_TOUCH && styles.loopRangeDebug,
@@ -1095,7 +1116,7 @@ export default function VideoPlayerScreen() {
                                                     width: loopRangeWidth,
                                                 },
                                             ]}
-                                            {...loopRangePanResponder.panHandlers}
+                                            pointerEvents="none"
                                         />
                                         <View
                                             style={[
@@ -1657,6 +1678,13 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(245,200,66,0.18)',
         zIndex: 2,
     },
+    loopRangeHitArea: {
+        position: 'absolute',
+        top: 0,
+        bottom: 0,
+        zIndex: 3,
+        backgroundColor: 'transparent',
+    },
     loopRangeActive: {
         borderColor: '#f0b429',
         backgroundColor: 'rgba(245,200,66,0.28)',
@@ -1672,6 +1700,12 @@ const styles = StyleSheet.create({
     },
     loopRangeDebugActive: {
         borderColor: 'rgba(0,180,255,0.95)',
+        backgroundColor: 'rgba(0,180,255,0.18)',
+    },
+    loopRangeHitAreaDebug: {
+        backgroundColor: 'rgba(0,180,255,0.08)',
+    },
+    loopRangeHitAreaDebugActive: {
         backgroundColor: 'rgba(0,180,255,0.18)',
     },
     loopRangeDisabled: {
