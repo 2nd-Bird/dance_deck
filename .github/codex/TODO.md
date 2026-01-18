@@ -67,7 +67,7 @@
   - Next: iOS Dev Clientでループ窓ドラッグが0:00に戻らないことを確認
 
 - [ ] (P0) RC-PAYWALL-001 Bookmark保存時のPaywallが想定と違い、"default offering has no configured paywall" が出る
-  - Status: TODO
+  - Status: PARTIAL
   - Impact: Pro導線が壊れており、購入/解放の検証ができない
   - Expect:
     - Bookmark保存（Pro機能）実行時に、RevenueCatの想定Paywall（V2 / published）を表示
@@ -84,6 +84,7 @@
       - if you expected to see a v2 paywall, make sure it is published.
       - displayed paywall contains default configuration.
       - this error will hidden in production.
+  - Next: Dev ClientでPaywall表示時にcurrent offeringのPaywallが出るか確認
 
 - [ ] (P0) UX-TL-HIT-001 4 counts のループ窓が小さすぎて操作困難（操作性上の実質バグ）
   - Status: TODO
@@ -180,4 +181,4 @@
 ---
 
 ## Last updated
-- 2026-01-14 21:55 (by Codex)
+- 2026-01-19 07:40 (by Codex)
