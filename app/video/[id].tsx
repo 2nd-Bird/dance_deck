@@ -49,6 +49,7 @@ export default function VideoPlayerScreen() {
     const [bookmarkThumbs, setBookmarkThumbs] = useState<Record<string, string>>({});
     const [timelineWidth, setTimelineWidth] = useState(0);
     const [activeLoopDrag, setActiveLoopDrag] = useState<null | "start" | "end" | "range">(null);
+    const [precisionMode, setPrecisionMode] = useState(false);
     const [isScrubbing, setIsScrubbing] = useState(false);
     const [scrubPositionMillis, setScrubPositionMillis] = useState(0);
     const [showBpmTools, setShowBpmTools] = useState(false);
@@ -65,6 +66,7 @@ export default function VideoPlayerScreen() {
     const playheadDragStart = useRef(0);
     const scrubPositionRef = useRef(0);
     const loopStartRef = useRef(loopStartMillis);
+    const precisionModeRef = useRef(precisionMode);
     const durationRef = useRef(durationMillis);
     const positionRef = useRef(positionMillis);
     const bpmRef = useRef(bpm);
@@ -74,6 +76,7 @@ export default function VideoPlayerScreen() {
     const overlayOpacity = useRef(new Animated.Value(0)).current;
     const overlayHideTimeoutRef = useRef<any>(null);
     const tapTimeoutRef = useRef<any>(null);
+    const precisionTimeoutRef = useRef<any>(null);
     const lastTapRef = useRef(0);
     const videoLayoutRef = useRef({ width: 0, height: 0 });
     const playControlCenterYRef = useRef<number | null>(null);
@@ -193,6 +196,10 @@ export default function VideoPlayerScreen() {
 
     const LOOP_EPSILON_MS = 50;
     const LOOP_HANDLE_WIDTH = 24;
+    const PRECISION_LONG_PRESS_MS = 260;
+    const PRECISION_SCALE = 3;
+    const LOOP_TIME_LABEL_WIDTH = 72;
+    const LOOP_TIME_LABEL_HEIGHT = 22;
     const getBeatDuration = useCallback(() => 60000 / bpm, [bpm]);
     const getLoopDuration = useCallback(
         () => getBeatDuration() * loopLengthBeats,
@@ -217,6 +224,10 @@ export default function VideoPlayerScreen() {
     useEffect(() => {
         loopStartRef.current = loopStartMillis;
     }, [loopStartMillis]);
+
+    useEffect(() => {
+        precisionModeRef.current = precisionMode;
+    }, [precisionMode]);
 
     useEffect(() => {
         timelineWidthRef.current = timelineWidth;
@@ -387,6 +398,33 @@ export default function VideoPlayerScreen() {
         return (clamped / width) * duration;
     };
 
+    const getDeltaFromGesture = (dx: number) => {
+        const width = timelineWidthRef.current;
+        const duration = durationRef.current;
+        if (width <= 0 || duration <= 0) return 0;
+        const scale = precisionModeRef.current ? PRECISION_SCALE : 1;
+        return (dx / width) * (duration / scale);
+    };
+
+    const startPrecisionTimer = () => {
+        if (precisionTimeoutRef.current) {
+            clearTimeout(precisionTimeoutRef.current);
+        }
+        precisionTimeoutRef.current = setTimeout(() => {
+            precisionModeRef.current = true;
+            setPrecisionMode(true);
+        }, PRECISION_LONG_PRESS_MS);
+    };
+
+    const stopPrecisionMode = () => {
+        if (precisionTimeoutRef.current) {
+            clearTimeout(precisionTimeoutRef.current);
+            precisionTimeoutRef.current = null;
+        }
+        precisionModeRef.current = false;
+        setPrecisionMode(false);
+    };
+
     const isTouchWithinLoopWindow = (x: number) => {
         const width = timelineWidthRef.current;
         const duration = durationRef.current;
@@ -428,6 +466,14 @@ export default function VideoPlayerScreen() {
     const loopRangeTouchLeft = Math.min(
         Math.max(loopStartLeft - (loopRangeTouchWidth - loopRangeWidth) / 2, 0),
         Math.max(0, timelineWidth - loopRangeTouchWidth)
+    );
+    const loopStartLabelLeft = Math.min(
+        Math.max(loopStartLeft - LOOP_TIME_LABEL_WIDTH / 2, 0),
+        Math.max(0, timelineWidth - LOOP_TIME_LABEL_WIDTH)
+    );
+    const loopEndLabelLeft = Math.min(
+        Math.max(loopEndLeft - LOOP_TIME_LABEL_WIDTH / 2, 0),
+        Math.max(0, timelineWidth - LOOP_TIME_LABEL_WIDTH)
     );
 
     const playheadPanResponder = useRef(
@@ -481,6 +527,7 @@ export default function VideoPlayerScreen() {
                 logTimelineTouch("start", "start", event);
                 setDebugActive("start", true);
                 setActiveLoopDrag("start");
+                startPrecisionTimer();
                 loopDragStart.current = {
                     start: loopStartRef.current,
                     end: loopStartRef.current + loopDurationRef.current,
@@ -488,10 +535,7 @@ export default function VideoPlayerScreen() {
             },
             onPanResponderMove: (event, gestureState) => {
                 logTimelineTouch("start", "move", event, gestureState);
-                const width = timelineWidthRef.current;
-                const duration = durationRef.current;
-                if (width <= 0 || duration <= 0) return;
-                const delta = (gestureState.dx / width) * duration;
+                const delta = getDeltaFromGesture(gestureState.dx);
                 const minDuration = getMinLoopDurationFromRefs();
                 const end = loopDragStart.current.end;
                 const nextStart = loopDragStart.current.start + delta;
@@ -504,11 +548,13 @@ export default function VideoPlayerScreen() {
                 logTimelineTouch("start", "end");
                 setDebugActive("start", false);
                 setActiveLoopDrag(null);
+                stopPrecisionMode();
             },
             onPanResponderTerminate: () => {
                 logTimelineTouch("start", "terminate");
                 setDebugActive("start", false);
                 setActiveLoopDrag(null);
+                stopPrecisionMode();
             },
         })
     ).current;
@@ -523,6 +569,7 @@ export default function VideoPlayerScreen() {
                 logTimelineTouch("end", "start", event);
                 setDebugActive("end", true);
                 setActiveLoopDrag("end");
+                startPrecisionTimer();
                 loopDragStart.current = {
                     start: loopStartRef.current,
                     end: loopStartRef.current + loopDurationRef.current,
@@ -530,16 +577,13 @@ export default function VideoPlayerScreen() {
             },
             onPanResponderMove: (event, gestureState) => {
                 logTimelineTouch("end", "move", event, gestureState);
-                const width = timelineWidthRef.current;
-                const duration = durationRef.current;
-                if (width <= 0 || duration <= 0) return;
-                const delta = (gestureState.dx / width) * duration;
+                const delta = getDeltaFromGesture(gestureState.dx);
                 const minDuration = getMinLoopDurationFromRefs();
                 const start = loopDragStart.current.start;
                 const nextEnd = loopDragStart.current.end + delta;
                 const clampedEnd = Math.min(
                     Math.max(nextEnd, start + minDuration),
-                    duration
+                    durationRef.current
                 );
                 const nextDuration = Math.max(minDuration, clampedEnd - start);
                 setLoopLengthBeats(nextDuration / (60000 / Math.max(1, bpmRef.current)));
@@ -548,11 +592,13 @@ export default function VideoPlayerScreen() {
                 logTimelineTouch("end", "end");
                 setDebugActive("end", false);
                 setActiveLoopDrag(null);
+                stopPrecisionMode();
             },
             onPanResponderTerminate: () => {
                 logTimelineTouch("end", "terminate");
                 setDebugActive("end", false);
                 setActiveLoopDrag(null);
+                stopPrecisionMode();
             },
         })
     ).current;
@@ -567,6 +613,7 @@ export default function VideoPlayerScreen() {
                 logTimelineTouch("range", "start", event);
                 setDebugActive("range", true);
                 setActiveLoopDrag("range");
+                startPrecisionTimer();
                 loopDragStart.current = {
                     start: loopStartRef.current,
                     end: loopStartRef.current + loopDurationRef.current,
@@ -574,10 +621,9 @@ export default function VideoPlayerScreen() {
             },
             onPanResponderMove: (event, gestureState) => {
                 logTimelineTouch("range", "move", event, gestureState);
-                const width = timelineWidthRef.current;
                 const duration = durationRef.current;
-                if (width <= 0 || duration <= 0) return;
-                const delta = (gestureState.dx / width) * duration;
+                if (duration <= 0) return;
+                const delta = getDeltaFromGesture(gestureState.dx);
                 const length = loopDragStart.current.end - loopDragStart.current.start;
                 let nextStart = loopDragStart.current.start + delta;
                 nextStart = Math.min(Math.max(nextStart, 0), Math.max(0, duration - length));
@@ -588,6 +634,7 @@ export default function VideoPlayerScreen() {
                 logTimelineTouch("range", "end");
                 setDebugActive("range", false);
                 setActiveLoopDrag(null);
+                stopPrecisionMode();
                 const snapped = snapLoopStartToBeat(loopStartRef.current, loopDurationRef.current);
                 setLoopStartMillis(snapped);
             },
@@ -595,6 +642,7 @@ export default function VideoPlayerScreen() {
                 logTimelineTouch("range", "terminate");
                 setDebugActive("range", false);
                 setActiveLoopDrag(null);
+                stopPrecisionMode();
                 const snapped = snapLoopStartToBeat(loopStartRef.current, loopDurationRef.current);
                 setLoopStartMillis(snapped);
             },
@@ -621,10 +669,15 @@ export default function VideoPlayerScreen() {
     };
 
     const formatTime = (millis: number) => {
-        const totalSeconds = Math.floor(millis / 1000);
+        const safeMillis = Number.isFinite(millis) && millis > 0 ? millis : 0;
+        const totalSeconds = Math.floor(safeMillis / 1000);
         const minutes = Math.floor(totalSeconds / 60);
         const seconds = totalSeconds % 60;
-        return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+        const centiseconds = Math.floor((safeMillis % 1000) / 10);
+        const mm = minutes < 10 ? `0${minutes}` : `${minutes}`;
+        const ss = seconds < 10 ? `0${seconds}` : `${seconds}`;
+        const cc = centiseconds < 10 ? `0${centiseconds}` : `${centiseconds}`;
+        return `${mm}:${ss}:${cc}`;
     };
 
     const formatCounts = (beats: number) => {
@@ -1104,6 +1157,42 @@ export default function VideoPlayerScreen() {
                                             ]}
                                             {...loopRangePanResponder.panHandlers}
                                         />
+                                        {(activeLoopDrag === "start" || activeLoopDrag === "range") && (
+                                            <View
+                                                pointerEvents="none"
+                                                style={[
+                                                    styles.loopTimeLabel,
+                                                    {
+                                                        left: loopStartLabelLeft,
+                                                        top: -LOOP_TIME_LABEL_HEIGHT - 6,
+                                                        width: LOOP_TIME_LABEL_WIDTH,
+                                                        height: LOOP_TIME_LABEL_HEIGHT,
+                                                    },
+                                                ]}
+                                            >
+                                                <Text style={styles.loopTimeLabelText}>
+                                                    {formatTime(loopStartMillis)}
+                                                </Text>
+                                            </View>
+                                        )}
+                                        {(activeLoopDrag === "end" || activeLoopDrag === "range") && (
+                                            <View
+                                                pointerEvents="none"
+                                                style={[
+                                                    styles.loopTimeLabel,
+                                                    {
+                                                        left: loopEndLabelLeft,
+                                                        top: -LOOP_TIME_LABEL_HEIGHT - 6,
+                                                        width: LOOP_TIME_LABEL_WIDTH,
+                                                        height: LOOP_TIME_LABEL_HEIGHT,
+                                                    },
+                                                ]}
+                                            >
+                                                <Text style={styles.loopTimeLabelText}>
+                                                    {formatTime(loopEndMillis)}
+                                                </Text>
+                                            </View>
+                                        )}
                                         <View
                                             style={[
                                                 styles.loopRange,
@@ -1684,6 +1773,20 @@ const styles = StyleSheet.create({
         bottom: 0,
         zIndex: 3,
         backgroundColor: 'transparent',
+    },
+    loopTimeLabel: {
+        position: 'absolute',
+        borderRadius: 6,
+        backgroundColor: '#111',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 5,
+        paddingHorizontal: 6,
+    },
+    loopTimeLabelText: {
+        color: '#fff',
+        fontSize: 11,
+        fontWeight: '600',
     },
     loopRangeActive: {
         borderColor: '#f0b429',
