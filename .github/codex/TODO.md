@@ -107,17 +107,16 @@
   - Human ask: 4count選択時のドラッグ操作感（掴みやすさ）を共有
 
 - [ ] (P0) UX-TL-SMOOTH-001 ループ窓/左右端の移動を iOS写真アプリ同様に mm:ss:XX 精度で滑らかにしたい（仕様追加の要否確認）
-  - Status: TODO
+  - Status: PARTIAL
   - Expect:
     - iOS写真アプリの動画範囲指定のように滑らか（サブ秒精度）に動く
   - Actual:
-    - 現状は精度/滑らかさが不足（詳細はキャプチャで説明予定）
+    - 精密調整/時間表示は実装済み。実機UXの確認待ち。
   - Repro:
     1) Timelineで左右端/窓移動を試す
     2) 期待する滑らかさに達していない
   - Next:
-    - 長押しで timeline scale をN倍に切り替える精密調整モードを追加
-    - 操作中の時間表示を mm:ss:xx にする
+    - iOS Dev Clientで長押し精密調整と mm:ss:xx 表示の体感確認
 
 ### 追加仕様 UX-TL-SMOOTH-002: iOS写真アプリ準拠のループ範囲指定UX
 
@@ -186,4 +185,4 @@
 ---
 
 ## Last updated
-- 2026-01-19 07:44 (by Codex)
+- 2026-01-19 08:06 (by Codex)
