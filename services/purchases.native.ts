@@ -85,7 +85,7 @@ export const getDefaultOfferingSafe = async (): Promise<PurchasesOffering | null
   if (!status.configured) return null;
   try {
     const offerings = await Purchases.getOfferings();
-    return offerings.all?.default ?? offerings.current ?? null;
+    return offerings.current ?? offerings.all?.default ?? null;
   } catch (error) {
     if (__DEV__) {
       console.warn('Failed to load default offering', error);

@@ -45,11 +45,9 @@
   - Status: DONE
   - SPEC refs: 追加仕様(Privacy) 5.x
   - Next: App Store Connect へ申告内容を入力
-     
-### P0 — Device Verified Bugs (iOS Dev Client)
 
 - [ ] (P0) UX-TL-LOOP-002 ループ窓（range）が0:00に吸い付き移動できない
-  - Status: TODO
+  - Status: HUMAN-VERIFY
   - Impact: コア価値（8-countループ練習）が成立しない
   - Expect:
     - ループ窓（中央ドラッグ/左右ハンドル）がドラッグ量に応じて連続的に移動する
@@ -66,9 +64,11 @@
     - ...
     - [TimelineTouch] {"dx": 105, "dy": -2.6666, "phase": "move", "target": "range", "x": 73.9999, "y": 15.3333}
     - [TimelineTouch] {"dx": undefined, "dy": undefined, "phase": "end", "target": "range", "x": undefined, "y": undefined}
+  - Next: iOS Dev Clientでループ窓ドラッグが0:00に戻らないことを確認
+  - Human ask: iOS Dev Clientでドラッグ後に0:00へ戻らないか確認し、[TimelineTouch]ログの開始/終了時のxを共有
 
 - [ ] (P0) RC-PAYWALL-001 Bookmark保存時のPaywallが想定と違い、"default offering has no configured paywall" が出る
-  - Status: TODO
+  - Status: HUMAN-VERIFY
   - Impact: Pro導線が壊れており、購入/解放の検証ができない
   - Expect:
     - Bookmark保存（Pro機能）実行時に、RevenueCatの想定Paywall（V2 / published）を表示
@@ -85,9 +85,11 @@
       - if you expected to see a v2 paywall, make sure it is published.
       - displayed paywall contains default configuration.
       - this error will hidden in production.
+  - Next: Dev ClientでPaywall表示時にcurrent offeringのPaywallが出るか確認
+  - Human ask: iOS Dev ClientでBookmark保存→表示されたPaywallの内容と警告有無を共有
 
 - [ ] (P0) UX-TL-HIT-001 4 counts のループ窓が小さすぎて操作困難（操作性上の実質バグ）
-  - Status: TODO
+  - Status: HUMAN-VERIFY
   - Impact: 4 counts が実用にならず、練習導線が途切れる
   - Expect:
     - 4eights/2eights/1eight/4count の順で窓長が変わるのはOK
@@ -101,9 +103,11 @@
     3) 4countの窓が小さく操作が困難
   - Notes:
     - 表示スケール（ズーム/表示範囲）を窓長に合わせて調整したい（案）
+  - Next: iOS Dev Clientで4countでもドラッグしやすい最小タッチ領域か確認
+  - Human ask: 4count選択時のドラッグ操作感（掴みやすさ）を共有
 
 - [ ] (P0) UX-TL-SMOOTH-001 ループ窓/左右端の移動を iOS写真アプリ同様に mm:ss:XX 精度で滑らかにしたい（仕様追加の要否確認）
-  - Status: TODO (spec-clarify)
+  - Status: HUMAN-BLOCKED (spec-clarify)
   - Expect:
     - iOS写真アプリの動画範囲指定のように滑らか（サブ秒精度）に動く
   - Actual:
@@ -113,6 +117,46 @@
     2) 期待する滑らかさに達していない
   - Human ask:
     - iOS写真アプリのキャプチャ（比較）を添付して仕様を確定したい
+
+### 追加仕様 UX-TL-SMOOTH-002: iOS写真アプリ準拠のループ範囲指定UX
+
+#### 目的
+ユーザーの既知操作（iOS標準写真アプリ）を流用し、
+説明不要・低認知負荷でのループ範囲指定を実現する。
+
+#### 基本方針
+- ループ範囲指定UXは iOS標準写真アプリの動画トリム操作を強く参照する
+- 見た目・色味・操作感は「コピー可能な範囲でコピー」する
+
+#### 状態遷移
+1. 初期状態
+   - ループ範囲（黄色枠）は存在しない
+   - タイムラインは通常スケール
+
+2. 範囲指定開始
+   - 左端または右端ハンドルをドラッグした瞬間に
+     ループ範囲（黄色枠）を生成する
+
+3. 端ハンドル操作中
+   - 操作中のハンドル直上に時間表示を行う
+   - 表示形式は `mm:ss:xx`（xx = サブ秒）
+   - 時間は連続的に更新され、カクつきがあってはならない
+
+4. 精密調整モード
+   - ループ範囲（中央）を長押しすると精密調整モードに入る
+   - 精密調整モードではタイムライン表示スケールを拡大する
+     （結果として、ループ範囲が相対的に広く見える）
+   - 微小なドラッグで時間を詰められること
+
+#### 操作精度
+- ループ範囲の移動・左右端操作は
+  秒未満（サブ秒）単位で連続的に行えること
+- 「1秒単位でカクカク動く」挙動は禁止
+
+#### 視覚仕様
+- ループ範囲の色は黄色系（iOS写真アプリ準拠）
+- ハンドル形状・太さは、既存Timeline内で最も認知しやすい形状を採用
+
 
 
 ### P1 — Core UX (Loop / Timeline)
@@ -141,4 +185,4 @@
 ---
 
 ## Last updated
-- 2026-01-14 21:55 (by Codex)
+- 2026-01-19 07:44 (by Codex)
