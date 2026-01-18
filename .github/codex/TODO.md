@@ -45,6 +45,75 @@
   - Status: DONE
   - SPEC refs: 追加仕様(Privacy) 5.x
   - Next: App Store Connect へ申告内容を入力
+     
+### P0 — Device Verified Bugs (iOS Dev Client)
+
+- [ ] (P0) UX-TL-LOOP-002 ループ窓（range）が0:00に吸い付き移動できない
+  - Status: TODO
+  - Impact: コア価値（8-countループ練習）が成立しない
+  - Expect:
+    - ループ窓（中央ドラッグ/左右ハンドル）がドラッグ量に応じて連続的に移動する
+    - 0:00に固定されない
+  - Actual:
+    - ループ窓を動かしても 0:00 に吸い付き、実質移動できない
+  - Repro:
+    1) iOS Dev Clientで任意の動画を開く
+    2) Timeline表示状態で、Loop Window（黄色枠）中央（range）をドラッグ
+    3) 位置が0:00に固定され移動しない
+  - Logs (sample):
+    - [TimelineTouch] {"dx": undefined, "dy": undefined, "phase": "start", "target": "range", "x": 73.6666, "y": 17.9999}
+    - [TimelineTouch] {"dx": 1.3333, "dy": 0.3333, "phase": "move", "target": "range", "x": 75, "y": 18.3333}
+    - ...
+    - [TimelineTouch] {"dx": 105, "dy": -2.6666, "phase": "move", "target": "range", "x": 73.9999, "y": 15.3333}
+    - [TimelineTouch] {"dx": undefined, "dy": undefined, "phase": "end", "target": "range", "x": undefined, "y": undefined}
+
+- [ ] (P0) RC-PAYWALL-001 Bookmark保存時のPaywallが想定と違い、"default offering has no configured paywall" が出る
+  - Status: TODO
+  - Impact: Pro導線が壊れており、購入/解放の検証ができない
+  - Expect:
+    - Bookmark保存（Pro機能）実行時に、RevenueCatの想定Paywall（V2 / published）を表示
+  - Actual:
+    - 「offering ‘default’ has no configured paywall... displayed paywall contains default configuration...」が表示される
+    - “手元で開発したのと異なるPaywall” に見える
+  - Repro:
+    1) iOS Dev Clientで動画詳細へ
+    2) Bookmark保存ボタンを押す
+    3) 期待と異なるPaywall + 上記メッセージ
+  - Logs:
+    - 画面メッセージ:
+      - offering ‘default’ has no configured paywall.
+      - if you expected to see a v2 paywall, make sure it is published.
+      - displayed paywall contains default configuration.
+      - this error will hidden in production.
+
+- [ ] (P0) UX-TL-HIT-001 4 counts のループ窓が小さすぎて操作困難（操作性上の実質バグ）
+  - Status: TODO
+  - Impact: 4 counts が実用にならず、練習導線が途切れる
+  - Expect:
+    - 4eights/2eights/1eight/4count の順で窓長が変わるのはOK
+    - 4countでも操作可能な最小タッチ領域が確保される
+    - 窓が短い時はタイムライン表示スケールを寄せて操作しやすくする（案）
+  - Actual:
+    - 4count を選ぶと窓が小さくて操作が難しい
+  - Repro:
+    1) 動画詳細で Timeline表示
+    2) 4eights→2eights→1eight→4count と切替
+    3) 4countの窓が小さく操作が困難
+  - Notes:
+    - 表示スケール（ズーム/表示範囲）を窓長に合わせて調整したい（案）
+
+- [ ] (P0) UX-TL-SMOOTH-001 ループ窓/左右端の移動を iOS写真アプリ同様に mm:ss:XX 精度で滑らかにしたい（仕様追加の要否確認）
+  - Status: TODO (spec-clarify)
+  - Expect:
+    - iOS写真アプリの動画範囲指定のように滑らか（サブ秒精度）に動く
+  - Actual:
+    - 現状は精度/滑らかさが不足（詳細はキャプチャで説明予定）
+  - Repro:
+    1) Timelineで左右端/窓移動を試す
+    2) 期待する滑らかさに達していない
+  - Human ask:
+    - iOS写真アプリのキャプチャ（比較）を添付して仕様を確定したい
+
 
 ### P1 — Core UX (Loop / Timeline)
 - [ ] (P1) UX-LOOP-001 Loop操作がFreeで常に動作する（gating巻き込み防止）
