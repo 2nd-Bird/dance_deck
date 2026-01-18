@@ -8,6 +8,7 @@
   - DONE: 実装済み + 機械的検証済み（テスト/型/ビルド）
   - PARTIAL: 実装はあるがUX/端末検証が必要
   - TODO: 未着手
+  - HUMAN-VERIFY: 端末/UX確認のみ必要
   - HUMAN-BLOCKED: 端末/外部設定がないと進めない
 - Priority:
   - P0: 申請/利用不能に直結
@@ -107,7 +108,7 @@
   - Human ask: 4count選択時のドラッグ操作感（掴みやすさ）を共有
 
 - [ ] (P0) UX-TL-SMOOTH-001 ループ窓/左右端の移動を iOS写真アプリ同様に mm:ss:XX 精度で滑らかにしたい（仕様追加の要否確認）
-  - Status: PARTIAL
+  - Status: HUMAN-VERIFY
   - Expect:
     - iOS写真アプリの動画範囲指定のように滑らか（サブ秒精度）に動く
   - Actual:
@@ -185,4 +186,4 @@
 ---
 
 ## Last updated
-- 2026-01-19 08:06 (by Codex)
+- 2026-01-19 08:10 (by Codex)
