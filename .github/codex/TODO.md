@@ -47,7 +47,7 @@
   - Next: App Store Connect へ申告内容を入力
 
 - [ ] (P0) UX-TL-LOOP-002 ループ窓（range）が0:00に吸い付き移動できない
-  - Status: PARTIAL
+  - Status: HUMAN-VERIFY
   - Impact: コア価値（8-countループ練習）が成立しない
   - Expect:
     - ループ窓（中央ドラッグ/左右ハンドル）がドラッグ量に応じて連続的に移動する
@@ -65,9 +65,10 @@
     - [TimelineTouch] {"dx": 105, "dy": -2.6666, "phase": "move", "target": "range", "x": 73.9999, "y": 15.3333}
     - [TimelineTouch] {"dx": undefined, "dy": undefined, "phase": "end", "target": "range", "x": undefined, "y": undefined}
   - Next: iOS Dev Clientでループ窓ドラッグが0:00に戻らないことを確認
+  - Human ask: iOS Dev Clientでドラッグ後に0:00へ戻らないか確認し、[TimelineTouch]ログの開始/終了時のxを共有
 
 - [ ] (P0) RC-PAYWALL-001 Bookmark保存時のPaywallが想定と違い、"default offering has no configured paywall" が出る
-  - Status: PARTIAL
+  - Status: HUMAN-VERIFY
   - Impact: Pro導線が壊れており、購入/解放の検証ができない
   - Expect:
     - Bookmark保存（Pro機能）実行時に、RevenueCatの想定Paywall（V2 / published）を表示
@@ -85,9 +86,10 @@
       - displayed paywall contains default configuration.
       - this error will hidden in production.
   - Next: Dev ClientでPaywall表示時にcurrent offeringのPaywallが出るか確認
+  - Human ask: iOS Dev ClientでBookmark保存→表示されたPaywallの内容と警告有無を共有
 
 - [ ] (P0) UX-TL-HIT-001 4 counts のループ窓が小さすぎて操作困難（操作性上の実質バグ）
-  - Status: PARTIAL
+  - Status: HUMAN-VERIFY
   - Impact: 4 counts が実用にならず、練習導線が途切れる
   - Expect:
     - 4eights/2eights/1eight/4count の順で窓長が変わるのはOK
@@ -102,9 +104,10 @@
   - Notes:
     - 表示スケール（ズーム/表示範囲）を窓長に合わせて調整したい（案）
   - Next: iOS Dev Clientで4countでもドラッグしやすい最小タッチ領域か確認
+  - Human ask: 4count選択時のドラッグ操作感（掴みやすさ）を共有
 
 - [ ] (P0) UX-TL-SMOOTH-001 ループ窓/左右端の移動を iOS写真アプリ同様に mm:ss:XX 精度で滑らかにしたい（仕様追加の要否確認）
-  - Status: TODO (spec-clarify)
+  - Status: HUMAN-BLOCKED (spec-clarify)
   - Expect:
     - iOS写真アプリの動画範囲指定のように滑らか（サブ秒精度）に動く
   - Actual:
@@ -182,4 +185,4 @@
 ---
 
 ## Last updated
-- 2026-01-19 07:43 (by Codex)
+- 2026-01-19 07:44 (by Codex)
