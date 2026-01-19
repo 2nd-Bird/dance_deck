@@ -119,6 +119,12 @@
   - Next:
     - iOS Dev Clientで長押し精密調整と mm:ss:xx 表示の体感確認
 
+- [ ] (P0) BUILD-LINT-001 Timeline JSX merge error in app/video/[id].tsx
+  - Status: DONE
+  - SPEC refs: 追加仕様6 / 追加仕様 UX-TL-SMOOTH-002
+  - Next: none
+  - Verify: pnpm lint / pnpm typecheck / pnpm test / pnpm build
+
 ### 追加仕様 UX-TL-SMOOTH-002: iOS写真アプリ準拠のループ範囲指定UX
 
 #### 目的
