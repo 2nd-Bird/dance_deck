@@ -198,9 +198,13 @@
 - ループ範囲の色は黄色系（iOS写真アプリ準拠）
 - ハンドル形状・太さは、既存Timeline内で最も認知しやすい形状を採用
 
-
-
 ### P1 — Core UX (Loop / Timeline)
+- [ ] (P1) UX-TL-SMOOTH-002 iOS写真アプリ準拠のループ範囲指定UX
+  - Status: HUMAN-VERIFY
+  - SPEC refs: 追加仕様 UX-TL-SMOOTH-002
+  - Next: iOS Dev Clientで初期状態→ハンドルドラッグで範囲生成→長押し精密調整→mm:ss:xxラベル更新を確認
+  - Human ask: iOS Dev Clientで上記手順の体感とスクリーン録画を共有
+
 - [ ] (P1) UX-LOOP-001 Loop操作がFreeで常に動作する（gating巻き込み防止）
   - Status: DONE
   - SPEC refs: 追加仕様(課金) 2.4
