@@ -31,3 +31,6 @@
 2026-01-19 07:41 | feature/loop-20260114-001 | RC-PAYWALL-001 | pass | prefer current offering for paywall
 2026-01-19 07:43 | feature/loop-20260114-001 | UX-TL-HIT-001 | pass | add loop range min hit area
 2026-01-19 07:45 | feature/loop-20260114-001 | TODO status updates | pass | mark human verification blockers
+2026-01-19 08:05 | feature/ux-tl-smooth-001 | UX-TL-SMOOTH-001 | ok | add precision drag + mm:ss:xx labels
+2026-01-19 08:07 | feature/ux-tl-smooth-001 | UX-TL-SMOOTH-001 | ok | mark PARTIAL pending device verify
+2026-01-19 08:09 | feature/ux-tl-smooth-001 | UX-TL-SMOOTH-001 | ok | mark HUMAN-VERIFY + legend update
