@@ -51,6 +51,7 @@ export default function VideoPlayerScreen() {
     const [timelineWidth, setTimelineWidth] = useState(0);
     const [activeLoopDrag, setActiveLoopDrag] = useState<null | "start" | "end" | "range">(null);
     const [precisionMode, setPrecisionMode] = useState(false);
+    const [precisionAnchorX, setPrecisionAnchorX] = useState(0);
     const [isScrubbing, setIsScrubbing] = useState(false);
     const [scrubPositionMillis, setScrubPositionMillis] = useState(0);
     const [showBpmTools, setShowBpmTools] = useState(false);
@@ -68,6 +69,7 @@ export default function VideoPlayerScreen() {
     const scrubPositionRef = useRef(0);
     const loopStartRef = useRef(loopStartMillis);
     const precisionModeRef = useRef(precisionMode);
+    const precisionAnchorRef = useRef(precisionAnchorX);
     const durationRef = useRef(durationMillis);
     const positionRef = useRef(positionMillis);
     const bpmRef = useRef(bpm);
@@ -1221,115 +1223,62 @@ export default function VideoPlayerScreen() {
                                                         ]}
                                                         {...loopRangePanResponder.panHandlers}
                                                     />
-                                                ))
-                                            ) : (
-                                                <View style={styles.timelineFramesFallback} />
-                                            )}
-                                        </View>
-                                        <View
-                                            style={[
-                                                styles.playheadScrubArea,
-                                                DEBUG_TIMELINE_TOUCH && styles.playheadScrubAreaDebug,
-                                                debugTouchActive.playhead && styles.playheadScrubAreaActive,
-                                            ]}
-                                            {...playheadPanResponder.panHandlers}
-                                        />
-                                        <View
-                                            style={[
-                                                styles.loopRangeHitArea,
-                                                DEBUG_TIMELINE_TOUCH && styles.loopRangeHitAreaDebug,
-                                                debugTouchActive.range && styles.loopRangeHitAreaDebugActive,
-                                                {
-                                                    left: loopRangeTouchLeft,
-                                                    width: loopRangeTouchWidth,
-                                                },
-                                            ]}
-                                            {...loopRangePanResponder.panHandlers}
-                                        />
-                                        {(activeLoopDrag === "start" || activeLoopDrag === "range") && (
-                                            <View
-                                                pointerEvents="none"
-                                                style={[
-                                                    styles.loopTimeLabel,
-                                                    {
-                                                        left: loopStartLabelLeft,
-                                                        top: -LOOP_TIME_LABEL_HEIGHT - 6,
-                                                        width: LOOP_TIME_LABEL_WIDTH,
-                                                        height: LOOP_TIME_LABEL_HEIGHT,
-                                                    },
-                                                ]}
-                                            >
-                                                <Text style={styles.loopTimeLabelText}>
-                                                    {formatTime(loopStartMillis)}
-                                                </Text>
+                                                )}
+                                                {loopRangeVisible && (
+                                                    <View
+                                                        style={[
+                                                            styles.loopRange,
+                                                            activeLoopDrag && styles.loopRangeActive,
+                                                            DEBUG_TIMELINE_TOUCH && styles.loopRangeDebug,
+                                                            debugTouchActive.range && styles.loopRangeDebugActive,
+                                                            !loopEnabled && styles.loopRangeDisabled,
+                                                            {
+                                                                left: loopStartLeft,
+                                                                width: loopRangeWidth,
+                                                            },
+                                                        ]}
+                                                        pointerEvents="none"
+                                                    />
+                                                )}
+                                                <View
+                                                    style={[
+                                                        styles.loopHandle,
+                                                        styles.loopHandleLeft,
+                                                        !loopRangeVisible && styles.loopHandleDormant,
+                                                        activeLoopDrag === "start" && styles.loopHandleActive,
+                                                        DEBUG_TIMELINE_TOUCH && styles.loopHandleDebug,
+                                                        debugTouchActive.start && styles.loopHandleDebugActive,
+                                                        !loopEnabled && styles.loopHandleDisabled,
+                                                        {
+                                                            left: Math.max(0, loopStartLeft - LOOP_HANDLE_WIDTH / 2),
+                                                        },
+                                                    ]}
+                                                    {...loopStartPanResponder.panHandlers}
+                                                >
+                                                    <View style={styles.loopHandleGrip} />
+                                                </View>
+                                                <View
+                                                    style={[
+                                                        styles.loopHandle,
+                                                        styles.loopHandleRight,
+                                                        !loopRangeVisible && styles.loopHandleDormant,
+                                                        activeLoopDrag === "end" && styles.loopHandleActive,
+                                                        DEBUG_TIMELINE_TOUCH && styles.loopHandleDebug,
+                                                        debugTouchActive.end && styles.loopHandleDebugActive,
+                                                        !loopEnabled && styles.loopHandleDisabled,
+                                                        {
+                                                            left: Math.min(
+                                                                Math.max(0, timelineWidth - LOOP_HANDLE_WIDTH),
+                                                                loopEndLeft - LOOP_HANDLE_WIDTH / 2
+                                                            ),
+                                                        },
+                                                    ]}
+                                                    {...loopEndPanResponder.panHandlers}
+                                                >
+                                                    <View style={styles.loopHandleGrip} />
+                                                </View>
+                                                <View style={[styles.playhead, { left: playheadLeft }]} />
                                             </View>
-                                        )}
-                                        {(activeLoopDrag === "end" || activeLoopDrag === "range") && (
-                                            <View
-                                                pointerEvents="none"
-                                                style={[
-                                                    styles.loopTimeLabel,
-                                                    {
-                                                        left: loopEndLabelLeft,
-                                                        top: -LOOP_TIME_LABEL_HEIGHT - 6,
-                                                        width: LOOP_TIME_LABEL_WIDTH,
-                                                        height: LOOP_TIME_LABEL_HEIGHT,
-                                                    },
-                                                ]}
-                                            >
-                                                <Text style={styles.loopTimeLabelText}>
-                                                    {formatTime(loopEndMillis)}
-                                                </Text>
-                                            </View>
-                                        )}
-                                        <View
-                                            style={[
-                                                styles.loopRange,
-                                                activeLoopDrag && styles.loopRangeActive,
-                                                DEBUG_TIMELINE_TOUCH && styles.loopRangeDebug,
-                                                debugTouchActive.range && styles.loopRangeDebugActive,
-                                                !loopEnabled && styles.loopRangeDisabled,
-                                                {
-                                                    left: loopStartLeft,
-                                                    width: loopRangeWidth,
-                                                },
-                                            ]}
-                                            pointerEvents="none"
-                                        />
-                                        <View
-                                            style={[
-                                                styles.loopHandle,
-                                                styles.loopHandleLeft,
-                                                activeLoopDrag === "start" && styles.loopHandleActive,
-                                                DEBUG_TIMELINE_TOUCH && styles.loopHandleDebug,
-                                                debugTouchActive.start && styles.loopHandleDebugActive,
-                                                !loopEnabled && styles.loopHandleDisabled,
-                                                {
-                                                    left: Math.max(0, loopStartLeft - LOOP_HANDLE_WIDTH / 2),
-                                                },
-                                            ]}
-                                            {...loopStartPanResponder.panHandlers}
-                                        >
-                                            <View style={styles.loopHandleGrip} />
-                                        </View>
-                                        <View
-                                            style={[
-                                                styles.loopHandle,
-                                                styles.loopHandleRight,
-                                                activeLoopDrag === "end" && styles.loopHandleActive,
-                                                DEBUG_TIMELINE_TOUCH && styles.loopHandleDebug,
-                                                debugTouchActive.end && styles.loopHandleDebugActive,
-                                                !loopEnabled && styles.loopHandleDisabled,
-                                                {
-                                                    left: Math.min(
-                                                        Math.max(0, timelineWidth - LOOP_HANDLE_WIDTH),
-                                                        loopEndLeft - LOOP_HANDLE_WIDTH / 2
-                                                    ),
-                                                },
-                                            ]}
-                                            {...loopEndPanResponder.panHandlers}
-                                        >
-                                            <View style={styles.loopHandleGrip} />
                                         </View>
                                         {activeLoopDrag === "start" && loopRangeVisible && (
                                             <View
