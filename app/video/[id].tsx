@@ -237,10 +237,6 @@ export default function VideoPlayerScreen() {
     }, [precisionMode]);
 
     useEffect(() => {
-        precisionAnchorRef.current = precisionAnchorX;
-    }, [precisionAnchorX]);
-
-    useEffect(() => {
         timelineWidthRef.current = timelineWidth;
     }, [timelineWidth]);
 
@@ -427,15 +423,6 @@ export default function VideoPlayerScreen() {
             clearTimeout(precisionTimeoutRef.current);
         }
         precisionTimeoutRef.current = setTimeout(() => {
-            const width = timelineWidthRef.current;
-            const duration = durationRef.current;
-            const start = loopStartRef.current;
-            const length = loopDurationRef.current;
-            const startLeft = duration > 0 ? (start / duration) * width : 0;
-            const endLeft = duration > 0 ? ((start + length) / duration) * width : 0;
-            const anchor = Math.min(Math.max((startLeft + endLeft) / 2, 0), width);
-            precisionAnchorRef.current = anchor;
-            setPrecisionAnchorX(anchor);
             precisionModeRef.current = true;
             setPrecisionMode(true);
         }, PRECISION_LONG_PRESS_MS);
@@ -597,9 +584,7 @@ export default function VideoPlayerScreen() {
                 logTimelineTouch("start", "start", event);
                 setDebugActive("start", true);
                 setActiveLoopDrag("start");
-                if (!loopRangeVisible) {
-                    setLoopRangeVisible(true);
-                }
+                startPrecisionTimer();
                 loopDragStart.current = {
                     start: loopStartRef.current,
                     end: loopStartRef.current + loopDurationRef.current,
@@ -641,9 +626,7 @@ export default function VideoPlayerScreen() {
                 logTimelineTouch("end", "start", event);
                 setDebugActive("end", true);
                 setActiveLoopDrag("end");
-                if (!loopRangeVisible) {
-                    setLoopRangeVisible(true);
-                }
+                startPrecisionTimer();
                 loopDragStart.current = {
                     start: loopStartRef.current,
                     end: loopStartRef.current + loopDurationRef.current,
@@ -687,9 +670,6 @@ export default function VideoPlayerScreen() {
                 logTimelineTouch("range", "start", event);
                 setDebugActive("range", true);
                 setActiveLoopDrag("range");
-                if (!loopRangeVisible) {
-                    setLoopRangeVisible(true);
-                }
                 startPrecisionTimer();
                 loopDragStart.current = {
                     start: loopStartRef.current,
