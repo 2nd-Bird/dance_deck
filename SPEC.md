@@ -3,6 +3,9 @@ Dance Deck
 
 Beat-Synced Loop Player & Video Deck for Dancers
 
+### 追加仕様6:BPM自動推定機能
+addendum6.md を参照。
+
 ### 追加仕様5.1: 課金（RevenueCat）の実機検証環境
 
 - Expo Go では RevenueCat SDK は動作しない。
