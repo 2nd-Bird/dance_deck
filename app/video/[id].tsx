@@ -3,6 +3,8 @@ import PaywallModal from "@/components/PaywallModal";
 import TapTempoButton from "@/components/TapTempoButton";
 import { useProStatus } from "@/contexts/ProContext";
 import { trackEvent } from "@/services/analytics";
+import { extractAudioFromVideo } from "@/services/audioExtraction";
+import { analyzeBPM, normalizeTempoWithPrior } from "@/services/bpmAnalysis";
 import { isProRequired } from "@/services/proGating";
 import { getVideos, updateVideo } from "@/services/storage";
 import { LoopBookmark, VideoItem } from "@/types";
@@ -55,6 +57,8 @@ export default function VideoPlayerScreen() {
     const [isScrubbing, setIsScrubbing] = useState(false);
     const [scrubPositionMillis, setScrubPositionMillis] = useState(0);
     const [showBpmTools, setShowBpmTools] = useState(false);
+    const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [analysisProgress, setAnalysisProgress] = useState(0);
     const [timelineThumbs, setTimelineThumbs] = useState<string[]>([]);
     const DEBUG_TIMELINE_TOUCH = __DEV__;
     const [debugTouchActive, setDebugTouchActive] = useState({
@@ -840,14 +844,43 @@ export default function VideoPlayerScreen() {
         setPhaseMillis(positionMillis);
     };
 
-    const handleAutoDetectBpm = () => {
+    const handleAutoDetectBpm = useCallback(async () => {
         if (isProRequired("bpm_auto_detect") && !isPro) {
             void trackEvent('bpm_auto_detect_attempted', { videoId: videoItem?.id ?? null });
             setPaywallVisible(true);
             return;
         }
-        Alert.alert('Coming soon', 'BPM auto-detect is coming in a future update.');
-    };
+        if (!videoItem?.uri) {
+            Alert.alert("Auto Detect Error", "Video source is not available yet.");
+            return;
+        }
+        if (isAnalyzing) return;
+
+        setIsAnalyzing(true);
+        setAnalysisProgress(0.05);
+        try {
+            setAnalysisProgress(0.2);
+            const { audioBuffer, sampleRate } = await extractAudioFromVideo(videoItem.uri);
+            setAnalysisProgress(0.6);
+            const analysis = await analyzeBPM(audioBuffer, sampleRate);
+            setAnalysisProgress(0.85);
+            if (!analysis.bpm || analysis.bpm <= 0) {
+                throw new Error("No steady tempo detected in this clip.");
+            }
+            const normalization = normalizeTempoWithPrior(analysis.bpm, analysis.confidence);
+            const normalizedBpm = normalization.normalizedBpm;
+            const nextBpm = Math.max(20, Math.round(normalizedBpm));
+            setBpm(nextBpm);
+            setAnalysisProgress(1);
+        } catch (error) {
+            const message =
+                error instanceof Error ? error.message : "BPM auto-detect failed.";
+            Alert.alert("Auto Detect Error", message);
+        } finally {
+            setIsAnalyzing(false);
+            setAnalysisProgress(0);
+        }
+    }, [isAnalyzing, isPro, videoItem?.id, videoItem?.uri]);
 
     const handleSaveBookmark = () => {
         if (isProRequired("bookmark_create") && !isPro) {
@@ -1142,9 +1175,27 @@ export default function VideoPlayerScreen() {
                                         <View style={styles.bpmTapRow}>
                                             <TapTempoButton onSetBpm={handleTapTempo} label="Tap Tempo" tone="dark" />
                                         </View>
-                                        <Pressable style={styles.autoDetectButton} onPress={handleAutoDetectBpm}>
-                                            <MaterialCommunityIcons name="waveform" size={16} color="#111" />
-                                            <Text style={styles.autoDetectText}>Auto Detect (Pro)</Text>
+                                        <Pressable
+                                            style={[
+                                                styles.autoDetectButton,
+                                                isAnalyzing && styles.autoDetectButtonDisabled,
+                                            ]}
+                                            onPress={handleAutoDetectBpm}
+                                            disabled={isAnalyzing}
+                                        >
+                                            {isAnalyzing ? (
+                                                <>
+                                                    <ActivityIndicator size="small" color="#111" />
+                                                    <Text style={styles.autoDetectText}>
+                                                        Analyzing... {Math.round(analysisProgress * 100)}%
+                                                    </Text>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <MaterialCommunityIcons name="waveform" size={16} color="#111" />
+                                                    <Text style={styles.autoDetectText}>Auto Detect (Pro)</Text>
+                                                </>
+                                            )}
                                         </Pressable>
                                     </View>
                                 )}
@@ -1731,6 +1782,9 @@ const styles = StyleSheet.create({
         borderColor: '#ddd',
         alignSelf: 'flex-start',
         backgroundColor: '#fff',
+    },
+    autoDetectButtonDisabled: {
+        opacity: 0.6,
     },
     autoDetectText: {
         fontSize: 12,

@@ -21,6 +21,15 @@ export interface VideoItem {
     updatedAt?: number;
     duration?: number; // Duration in seconds
     bpm?: number;
+    bpmAuto?: {
+        bpm: number;
+        confidence: number;
+        tempoFamilyCandidates?: number[];
+        beatTimesSec?: number[]; // Beat Map (beat heads in seconds)
+        analyzedAt: string; // ISO timestamp
+        version: "1";
+    };
+    bpmSource?: "manual" | "auto";
     phaseMillis?: number;
     loopLengthBeats?: number;
     loopStartMillis?: number;
