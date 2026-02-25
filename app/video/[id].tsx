@@ -108,6 +108,8 @@ export default function VideoPlayerScreen() {
 
     // Save debouncing
     const saveTimeoutRef = useRef<any>(null);
+    const autoSaveVideoIdRef = useRef<string | null>(null);
+    const lastAutoSaveSnapshotRef = useRef("");
 
     const setDebugActive = useCallback(
         (key: "playhead" | "range" | "start" | "end", active: boolean) => {
@@ -192,6 +194,27 @@ export default function VideoPlayerScreen() {
     // Auto-Save Logic
     useEffect(() => {
         if (!videoItem) return;
+        if (autoSaveVideoIdRef.current !== videoItem.id) {
+            autoSaveVideoIdRef.current = videoItem.id;
+            lastAutoSaveSnapshotRef.current = "";
+        }
+        const snapshot = JSON.stringify({
+            id: videoItem.id,
+            memo,
+            tags,
+            bpm,
+            phaseMillis,
+            loopBookmarks,
+            loopRangeVisible,
+            loopLengthBeats: loopRangeVisible ? loopLengthBeats : null,
+            loopStartMillis: loopRangeVisible ? loopStartMillis : null,
+        });
+        if (!lastAutoSaveSnapshotRef.current) {
+            // Prime autosave baseline with loaded state to avoid write-on-idle loops.
+            lastAutoSaveSnapshotRef.current = snapshot;
+            return;
+        }
+        if (lastAutoSaveSnapshotRef.current === snapshot) return;
         if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
 
         saveTimeoutRef.current = setTimeout(async () => {
@@ -205,8 +228,14 @@ export default function VideoPlayerScreen() {
                 updatedAt: Date.now(),
                 ...(loopRangeVisible ? { loopLengthBeats, loopStartMillis } : {}),
             };
-            await updateVideo(updated);
-            setVideoItem(updated);
+            try {
+                await updateVideo(updated);
+                lastAutoSaveSnapshotRef.current = snapshot;
+            } catch (error) {
+                if (__DEV__) {
+                    console.warn("[AutoSave] failed", error);
+                }
+            }
         }, 1000);
 
         return () => {
@@ -360,20 +389,24 @@ export default function VideoPlayerScreen() {
         const loadTimelineThumbs = async () => {
             const count = 12;
             const interval = durationMillis / count;
-            const nextThumbs: string[] = [];
-            for (let i = 0; i < count; i += 1) {
-                const time = Math.min(durationMillis - 100, Math.max(0, Math.floor(i * interval)));
-                try {
-                    const { uri } = await VideoThumbnails.getThumbnailAsync(videoItem.uri, { time });
-                    if (cancelled) return;
-                    nextThumbs.push(uri);
-                } catch (error) {
-                    if (__DEV__) {
-                        console.warn('[Timeline] thumbnail failed', error);
+            const times = Array.from({ length: count }, (_, i) =>
+                Math.min(durationMillis - 100, Math.max(0, Math.floor(i * interval)))
+            );
+            const results = await Promise.all(
+                times.map(async (time) => {
+                    try {
+                        const { uri } = await VideoThumbnails.getThumbnailAsync(videoItem.uri, { time });
+                        return uri;
+                    } catch (error) {
+                        if (__DEV__) {
+                            console.warn('[Timeline] thumbnail failed', error);
+                        }
+                        return null;
                     }
-                }
-            }
+                })
+            );
             if (!cancelled) {
+                const nextThumbs = results.filter((uri): uri is string => typeof uri === "string");
                 setTimelineThumbs(nextThumbs);
             }
         };
@@ -391,20 +424,33 @@ export default function VideoPlayerScreen() {
         if (!videoItem?.uri || loopBookmarks.length === 0) return;
         let cancelled = false;
         const loadBookmarkThumbs = async () => {
-            const nextThumbs: Record<string, string> = {};
-            for (const bookmark of loopBookmarks) {
-                if (bookmarkThumbsRef.current[bookmark.id]) continue;
-                const time = Math.max(0, Math.min(bookmark.loopStartMillis, durationRef.current || durationMillis || 0));
-                try {
-                    const { uri } = await VideoThumbnails.getThumbnailAsync(videoItem.uri, { time });
-                    if (cancelled) return;
-                    nextThumbs[bookmark.id] = uri;
-                } catch (error) {
-                    if (__DEV__) {
-                        console.warn('[Bookmark] thumbnail failed', error);
+            const missingBookmarks = loopBookmarks.filter(
+                (bookmark) => !bookmarkThumbsRef.current[bookmark.id]
+            );
+            if (missingBookmarks.length === 0) return;
+            const nextThumbEntries = await Promise.all(
+                missingBookmarks.map(async (bookmark) => {
+                    const time = Math.max(
+                        0,
+                        Math.min(bookmark.loopStartMillis, durationRef.current || durationMillis || 0)
+                    );
+                    try {
+                        const { uri } = await VideoThumbnails.getThumbnailAsync(videoItem.uri, { time });
+                        return [bookmark.id, uri] as const;
+                    } catch (error) {
+                        if (__DEV__) {
+                            console.warn('[Bookmark] thumbnail failed', error);
+                        }
+                        return null;
                     }
-                }
-            }
+                })
+            );
+            const nextThumbs: Record<string, string> = {};
+            nextThumbEntries.forEach((entry) => {
+                if (!entry) return;
+                const [id, uri] = entry;
+                nextThumbs[id] = uri;
+            });
             if (!cancelled && Object.keys(nextThumbs).length > 0) {
                 setBookmarkThumbs((current) => ({ ...current, ...nextThumbs }));
             }

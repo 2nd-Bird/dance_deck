@@ -36,3 +36,4 @@
 2026-01-19 08:09 | feature/ux-tl-smooth-001 | UX-TL-SMOOTH-001 | ok | mark HUMAN-VERIFY + legend update
 2026-01-20 08:15 | fix/lint-parse-video-id-remote | BUILD-LINT-001 | pass | fix timeline JSX merge parse error
 2026-02-26 08:08 | feature/addendum6-polish-20260226 | ADD6-POLISH-002 / addendum6 5.9-5.10 | pass | add drag magnet + beatmap fixed-length + auto-detect cache/cancel
+2026-02-26 08:29 | feature/repo-quality-20260226 | PERF-002 | pass | reduce autosave I/O and parallelize thumbnail generation

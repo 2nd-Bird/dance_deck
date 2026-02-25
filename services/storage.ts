@@ -17,9 +17,6 @@ export const saveVideos = async (videos: VideoItem[]): Promise<void> => {
     try {
         const jsonValue = JSON.stringify(videos);
         await AsyncStorage.setItem(STORAGE_KEY, jsonValue);
-        if (__DEV__) {
-            console.log('[Storage] saved videos', { count: videos.length });
-        }
     } catch (e) {
         console.error('Error saving videos', e);
     }
