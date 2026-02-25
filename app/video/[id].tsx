@@ -5,6 +5,11 @@ import { useProStatus } from "@/contexts/ProContext";
 import { trackEvent } from "@/services/analytics";
 import { extractAudioFromVideo } from "@/services/audioExtraction";
 import { analyzeBPM, normalizeTempoWithPrior } from "@/services/bpmAnalysis";
+import {
+    resolveBeatSpanFromBeatMap,
+    resolveFixedLoopFromBeatMap,
+    resolveSnapMillis,
+} from "@/services/loopSnap";
 import { isProRequired } from "@/services/proGating";
 import { getVideos, updateVideo } from "@/services/storage";
 import { LoopBookmark, VideoItem } from "@/types";
@@ -53,7 +58,7 @@ export default function VideoPlayerScreen() {
     const [timelineWidth, setTimelineWidth] = useState(0);
     const [activeLoopDrag, setActiveLoopDrag] = useState<null | "start" | "end" | "range">(null);
     const [precisionMode, setPrecisionMode] = useState(false);
-    const [precisionAnchorX, setPrecisionAnchorX] = useState(0);
+    const [precisionAnchorX] = useState(0);
     const [isScrubbing, setIsScrubbing] = useState(false);
     const [scrubPositionMillis, setScrubPositionMillis] = useState(0);
     const [showBpmTools, setShowBpmTools] = useState(false);
@@ -72,11 +77,14 @@ export default function VideoPlayerScreen() {
     const playheadDragStart = useRef(0);
     const scrubPositionRef = useRef(0);
     const loopStartRef = useRef(loopStartMillis);
+    const loopLengthBeatsRef = useRef(loopLengthBeats);
+    const phaseRef = useRef(phaseMillis);
     const precisionModeRef = useRef(precisionMode);
     const precisionAnchorRef = useRef(precisionAnchorX);
     const durationRef = useRef(durationMillis);
     const positionRef = useRef(positionMillis);
     const bpmRef = useRef(bpm);
+    const beatMapRef = useRef<number[]>([]);
     const loopDurationRef = useRef(0);
     const timelineThumbsKeyRef = useRef("");
     const bookmarkThumbsRef = useRef<Record<string, string>>({});
@@ -84,6 +92,7 @@ export default function VideoPlayerScreen() {
     const overlayHideTimeoutRef = useRef<any>(null);
     const tapTimeoutRef = useRef<any>(null);
     const precisionTimeoutRef = useRef<any>(null);
+    const analysisRequestIdRef = useRef(0);
     const lastTapRef = useRef(0);
     const videoLayoutRef = useRef({ width: 0, height: 0 });
     const playControlCenterYRef = useRef<number | null>(null);
@@ -209,15 +218,35 @@ export default function VideoPlayerScreen() {
     const LOOP_HANDLE_WIDTH = 24;
     const PRECISION_LONG_PRESS_MS = 260;
     const PRECISION_SCALE = 3;
+    const SNAP_THRESHOLD_MILLIS = 80;
     const LOOP_TIME_LABEL_WIDTH = 72;
     const LOOP_TIME_LABEL_HEIGHT = 22;
     const getBeatDuration = useCallback(() => 60000 / bpm, [bpm]);
-    const getLoopDuration = useCallback(
-        () => getBeatDuration() * loopLengthBeats,
-        [getBeatDuration, loopLengthBeats]
-    );
-    const loopDurationMillis = getLoopDuration();
-    const loopEndMillis = loopStartMillis + loopDurationMillis;
+    const getRoundedLoopBeats = useCallback((value: number) => {
+        const rounded = Math.round(value);
+        if (rounded <= 0) return null;
+        return Math.abs(value - rounded) < 0.05 ? rounded : null;
+    }, []);
+    const getLoopEndMillis = useCallback(() => {
+        const beatMap = videoItem?.bpmAuto?.beatTimesSec;
+        const roundedBeats = getRoundedLoopBeats(loopLengthBeats);
+        if (beatMap && beatMap.length > 0 && roundedBeats) {
+            const fixedLoop = resolveFixedLoopFromBeatMap({
+                startCandidateMillis: loopStartMillis,
+                beatsPerLoop: roundedBeats,
+                beatMapSec: beatMap,
+                durationMillis,
+            });
+            if (fixedLoop) {
+                return fixedLoop.endMillis;
+            }
+        }
+
+        return loopStartMillis + getBeatDuration() * loopLengthBeats;
+    }, [videoItem, loopLengthBeats, loopStartMillis, durationMillis, getBeatDuration, getRoundedLoopBeats]);
+    const loopEndMillis = getLoopEndMillis();
+    const loopDurationMillis = Math.max(0, loopEndMillis - loopStartMillis);
+    const getLoopDuration = useCallback(() => loopDurationMillis, [loopDurationMillis]);
 
     const clampLoopStart = useCallback(
         (value: number) => {
@@ -235,6 +264,10 @@ export default function VideoPlayerScreen() {
     useEffect(() => {
         loopStartRef.current = loopStartMillis;
     }, [loopStartMillis]);
+
+    useEffect(() => {
+        loopLengthBeatsRef.current = loopLengthBeats;
+    }, [loopLengthBeats]);
 
     useEffect(() => {
         precisionModeRef.current = precisionMode;
@@ -255,6 +288,14 @@ export default function VideoPlayerScreen() {
     useEffect(() => {
         bpmRef.current = bpm;
     }, [bpm]);
+
+    useEffect(() => {
+        phaseRef.current = phaseMillis;
+    }, [phaseMillis]);
+
+    useEffect(() => {
+        beatMapRef.current = videoItem?.bpmAuto?.beatTimesSec ?? [];
+    }, [videoItem?.bpmAuto?.beatTimesSec]);
 
     useEffect(() => {
         loopDurationRef.current = getLoopDuration();
@@ -389,16 +430,26 @@ export default function VideoPlayerScreen() {
         [durationMillis]
     );
 
+    const snapMillisToBeat = useCallback(
+        (value: number, mode: "drag" | "commit" = "commit") =>
+            resolveSnapMillis({
+                candidateMillis: value,
+                beatMapSec: beatMapRef.current,
+                bpm: bpmRef.current,
+                phaseMillis: phaseRef.current,
+                mode,
+                snapThresholdMillis: SNAP_THRESHOLD_MILLIS,
+            }),
+        [SNAP_THRESHOLD_MILLIS]
+    );
+
     const snapLoopStartToBeat = useCallback(
-        (value: number, loopDuration: number) => {
-            const beat = getBeatDuration();
-            if (!beat || beat <= 0) return value;
-            const offset = value - phaseMillis;
-            const beats = Math.round(offset / beat);
-            const snapped = phaseMillis + beats * beat;
-            return clampLoopStartForDuration(snapped, loopDuration);
+        (value: number, loopDuration: number, mode: "drag" | "commit" = "commit") => {
+            const snapped = snapMillisToBeat(value, mode);
+            const maxStart = Math.max(0, durationRef.current - loopDuration);
+            return Math.min(Math.max(snapped, 0), maxStart);
         },
-        [getBeatDuration, phaseMillis, clampLoopStartForDuration]
+        [snapMillisToBeat]
     );
 
     const getPositionFromX = (x: number) => {
@@ -537,6 +588,87 @@ export default function VideoPlayerScreen() {
         Math.max(0, timelineWidth - LOOP_TIME_LABEL_WIDTH)
     );
 
+    const commitStartHandleEdit = () => {
+        const fixedEnd = loopDragStart.current.end;
+        const minDuration = getMinLoopDurationFromRefs();
+        const committedStart = Math.min(
+            Math.max(snapMillisToBeat(loopStartRef.current, "commit"), 0),
+            Math.max(0, fixedEnd - minDuration)
+        );
+        const beatMap = beatMapRef.current;
+        if (beatMap.length > 0) {
+            const span = resolveBeatSpanFromBeatMap({
+                startCandidateMillis: committedStart,
+                endCandidateMillis: fixedEnd,
+                beatMapSec: beatMap,
+                durationMillis: durationRef.current,
+            });
+            if (span) {
+                loopStartRef.current = span.startMillis;
+                setLoopStartMillis(span.startMillis);
+                setLoopLengthBeats(span.beatCount);
+                return;
+            }
+        }
+        loopStartRef.current = committedStart;
+        setLoopStartMillis(committedStart);
+        const beatDuration = 60000 / Math.max(1, bpmRef.current);
+        const nextDuration = Math.max(minDuration, fixedEnd - committedStart);
+        setLoopLengthBeats(nextDuration / beatDuration);
+    };
+
+    const commitEndHandleEdit = () => {
+        const duration = durationRef.current;
+        if (duration <= 0) return;
+        const start = loopStartRef.current;
+        const minDuration = getMinLoopDurationFromRefs();
+        let committedEnd = snapMillisToBeat(start + loopDurationRef.current, "commit");
+        committedEnd = Math.min(Math.max(committedEnd, start + minDuration), duration);
+        const beatMap = beatMapRef.current;
+        if (beatMap.length > 0) {
+            const span = resolveBeatSpanFromBeatMap({
+                startCandidateMillis: start,
+                endCandidateMillis: committedEnd,
+                beatMapSec: beatMap,
+                durationMillis: duration,
+            });
+            if (span) {
+                loopStartRef.current = span.startMillis;
+                setLoopStartMillis(span.startMillis);
+                setLoopLengthBeats(span.beatCount);
+                return;
+            }
+        }
+        const beatDuration = 60000 / Math.max(1, bpmRef.current);
+        setLoopLengthBeats((committedEnd - start) / beatDuration);
+    };
+
+    const commitRangeMove = () => {
+        const beatMap = beatMapRef.current;
+        const roundedLoopBeats = getRoundedLoopBeats(loopLengthBeatsRef.current);
+        if (beatMap.length > 0 && roundedLoopBeats) {
+            const fixedLoop = resolveFixedLoopFromBeatMap({
+                startCandidateMillis: loopStartRef.current,
+                beatsPerLoop: roundedLoopBeats,
+                beatMapSec: beatMap,
+                durationMillis: durationRef.current,
+            });
+            if (fixedLoop) {
+                loopStartRef.current = fixedLoop.startMillis;
+                setLoopStartMillis(fixedLoop.startMillis);
+                setLoopLengthBeats(roundedLoopBeats);
+                return;
+            }
+        }
+        const snapped = snapLoopStartToBeat(
+            loopStartRef.current,
+            loopDurationRef.current,
+            "commit"
+        );
+        loopStartRef.current = snapped;
+        setLoopStartMillis(snapped);
+    };
+
     const playheadPanResponder = useRef(
         PanResponder.create({
             onStartShouldSetPanResponder: (event) =>
@@ -601,8 +733,13 @@ export default function VideoPlayerScreen() {
                 const end = loopDragStart.current.end;
                 const nextStart = loopDragStart.current.start + delta;
                 const clampedStart = Math.min(Math.max(nextStart, 0), Math.max(0, end - minDuration));
-                const nextDuration = Math.max(minDuration, end - clampedStart);
-                setLoopStartMillis(clampedStart);
+                const dragSnappedStart = Math.min(
+                    Math.max(snapMillisToBeat(clampedStart, "drag"), 0),
+                    Math.max(0, end - minDuration)
+                );
+                const nextDuration = Math.max(minDuration, end - dragSnappedStart);
+                loopStartRef.current = dragSnappedStart;
+                setLoopStartMillis(dragSnappedStart);
                 setLoopLengthBeats(nextDuration / (60000 / Math.max(1, bpmRef.current)));
             },
             onPanResponderRelease: () => {
@@ -610,12 +747,14 @@ export default function VideoPlayerScreen() {
                 setDebugActive("start", false);
                 setActiveLoopDrag(null);
                 stopPrecisionMode();
+                commitStartHandleEdit();
             },
             onPanResponderTerminate: () => {
                 logTimelineTouch("start", "terminate");
                 setDebugActive("start", false);
                 setActiveLoopDrag(null);
                 stopPrecisionMode();
+                commitStartHandleEdit();
             },
         })
     ).current;
@@ -646,7 +785,11 @@ export default function VideoPlayerScreen() {
                     Math.max(nextEnd, start + minDuration),
                     durationRef.current
                 );
-                const nextDuration = Math.max(minDuration, clampedEnd - start);
+                const dragSnappedEnd = Math.min(
+                    Math.max(snapMillisToBeat(clampedEnd, "drag"), start + minDuration),
+                    durationRef.current
+                );
+                const nextDuration = Math.max(minDuration, dragSnappedEnd - start);
                 setLoopLengthBeats(nextDuration / (60000 / Math.max(1, bpmRef.current)));
             },
             onPanResponderRelease: () => {
@@ -654,12 +797,14 @@ export default function VideoPlayerScreen() {
                 setDebugActive("end", false);
                 setActiveLoopDrag(null);
                 stopPrecisionMode();
+                commitEndHandleEdit();
             },
             onPanResponderTerminate: () => {
                 logTimelineTouch("end", "terminate");
                 setDebugActive("end", false);
                 setActiveLoopDrag(null);
                 stopPrecisionMode();
+                commitEndHandleEdit();
             },
         })
     ).current;
@@ -688,6 +833,7 @@ export default function VideoPlayerScreen() {
                 const length = loopDragStart.current.end - loopDragStart.current.start;
                 let nextStart = loopDragStart.current.start + delta;
                 nextStart = Math.min(Math.max(nextStart, 0), Math.max(0, duration - length));
+                nextStart = snapLoopStartToBeat(nextStart, length, "drag");
                 loopStartRef.current = nextStart;
                 setLoopStartMillis(nextStart);
             },
@@ -696,16 +842,14 @@ export default function VideoPlayerScreen() {
                 setDebugActive("range", false);
                 setActiveLoopDrag(null);
                 stopPrecisionMode();
-                const snapped = snapLoopStartToBeat(loopStartRef.current, loopDurationRef.current);
-                setLoopStartMillis(snapped);
+                commitRangeMove();
             },
             onPanResponderTerminate: () => {
                 logTimelineTouch("range", "terminate");
                 setDebugActive("range", false);
                 setActiveLoopDrag(null);
                 stopPrecisionMode();
-                const snapped = snapLoopStartToBeat(loopStartRef.current, loopDurationRef.current);
-                setLoopStartMillis(snapped);
+                commitRangeMove();
             },
         })
     ).current;
@@ -816,12 +960,52 @@ export default function VideoPlayerScreen() {
     };
 
     const handleTapTempo = (nextBpm: number) => {
-        setBpm(Math.max(20, nextBpm));
+        const safeBpm = Math.max(20, nextBpm);
+        setBpm(safeBpm);
+        setVideoItem((current) => {
+            if (!current) return current;
+            return {
+                ...current,
+                bpm: safeBpm,
+                bpmSource: current.bpmAuto ? "manual" : current.bpmSource,
+            };
+        });
     };
 
     const adjustBpm = (delta: number) => {
-        setBpm((current) => Math.max(20, current + delta));
+        setBpm((current) => {
+            const safeBpm = Math.max(20, current + delta);
+            setVideoItem((video) => {
+                if (!video) return video;
+                return {
+                    ...video,
+                    bpm: safeBpm,
+                    bpmSource: video.bpmAuto ? "manual" : video.bpmSource,
+                };
+            });
+            return safeBpm;
+        });
     };
+
+    const handleTempoToggle = useCallback(() => {
+        if (!videoItem?.bpmAuto) return;
+
+        const baseBpm = videoItem.bpmAuto.bpm || bpm;
+        const family = [baseBpm / 2, baseBpm, baseBpm * 2];
+        const currentIndex = family.findIndex((value) => Math.abs(value - bpm) < 0.1);
+        const nextIndex = currentIndex === -1 ? 1 : (currentIndex + 1) % family.length;
+        const nextBpm = Math.max(20, Math.round(family[nextIndex]));
+
+        setBpm(nextBpm);
+        setVideoItem((current) => {
+            if (!current) return current;
+            return {
+                ...current,
+                bpm: nextBpm,
+                bpmSource: "manual",
+            };
+        });
+    }, [videoItem, bpm]);
 
     const handleSelectLoopLength = (beats: number) => {
         if (Platform.OS !== "web") {
@@ -830,12 +1014,31 @@ export default function VideoPlayerScreen() {
         if (!loopRangeVisible) {
             setLoopRangeVisible(true);
         }
+        const basePosition = Number.isFinite(positionMillis) && positionMillis > 0 ? positionMillis : loopStartMillis;
+        const beatMap = videoItem?.bpmAuto?.beatTimesSec;
+        if (beatMap && beatMap.length > 0) {
+            const fixedLoop = resolveFixedLoopFromBeatMap({
+                startCandidateMillis: basePosition,
+                beatsPerLoop: beats,
+                beatMapSec: beatMap,
+                durationMillis,
+            });
+            if (fixedLoop) {
+                const loopDuration = fixedLoop.endMillis - fixedLoop.startMillis;
+                const nextStart = clampLoopStartForDuration(fixedLoop.startMillis, loopDuration);
+                loopStartRef.current = nextStart;
+                setLoopLengthBeats(beats);
+                setLoopStartMillis(nextStart);
+                return;
+            }
+        }
+
         const beatDuration = 60000 / Math.max(1, bpm);
         const loopDuration = beatDuration * beats;
         const safeDuration = durationMillis ? Math.min(loopDuration, durationMillis) : loopDuration;
         const adjustedBeats = safeDuration / beatDuration;
-        const basePosition = Number.isFinite(positionMillis) && positionMillis > 0 ? positionMillis : loopStartMillis;
-        const nextStart = snapLoopStartToBeat(basePosition, safeDuration);
+        const nextStart = snapLoopStartToBeat(basePosition, safeDuration, "commit");
+        loopStartRef.current = nextStart;
         setLoopLengthBeats(adjustedBeats);
         setLoopStartMillis(nextStart);
     };
@@ -855,14 +1058,40 @@ export default function VideoPlayerScreen() {
             return;
         }
         if (isAnalyzing) return;
+        if (videoItem.bpmAuto?.bpm) {
+            const cachedBpm = Math.max(20, Math.round(videoItem.bpmAuto.bpm));
+            setBpm(cachedBpm);
+            setVideoItem((current) =>
+                current
+                    ? {
+                        ...current,
+                        bpm: cachedBpm,
+                        bpmSource: "auto",
+                    }
+                    : current
+            );
+            Alert.alert(
+                "BPM Cached",
+                `Using saved auto-detect result (${cachedBpm} BPM).\n\nAdjust with Tap Tempo if needed.`
+            );
+            return;
+        }
 
+        const requestId = analysisRequestIdRef.current + 1;
+        analysisRequestIdRef.current = requestId;
+        const isCurrentRequest = () => analysisRequestIdRef.current === requestId;
         setIsAnalyzing(true);
         setAnalysisProgress(0.05);
         try {
             setAnalysisProgress(0.2);
-            const { audioBuffer, sampleRate } = await extractAudioFromVideo(videoItem.uri);
+            const { audioBuffer, sampleRate } = await extractAudioFromVideo(videoItem.uri, {
+                maxDurationSec: 90,
+                sampleRate: 22050,
+            });
+            if (!isCurrentRequest()) return;
             setAnalysisProgress(0.6);
             const analysis = await analyzeBPM(audioBuffer, sampleRate);
+            if (!isCurrentRequest()) return;
             setAnalysisProgress(0.85);
             if (!analysis.bpm || analysis.bpm <= 0) {
                 throw new Error("No steady tempo detected in this clip.");
@@ -870,17 +1099,54 @@ export default function VideoPlayerScreen() {
             const normalization = normalizeTempoWithPrior(analysis.bpm, analysis.confidence);
             const normalizedBpm = normalization.normalizedBpm;
             const nextBpm = Math.max(20, Math.round(normalizedBpm));
+            const updatedVideo: VideoItem = {
+                ...videoItem,
+                bpm: nextBpm,
+                bpmSource: "auto",
+                bpmAuto: {
+                    bpm: nextBpm,
+                    confidence: analysis.confidence,
+                    tempoFamilyCandidates: normalization.tempoFamily,
+                    beatTimesSec: analysis.beatTimesSec,
+                    analyzedAt: new Date().toISOString(),
+                    version: "1",
+                },
+            };
+            await updateVideo(updatedVideo);
+            if (!isCurrentRequest()) return;
+            setVideoItem(updatedVideo);
             setBpm(nextBpm);
             setAnalysisProgress(1);
+            Alert.alert(
+                "BPM Detected",
+                `Estimated BPM: ${nextBpm}\nConfidence: ${(analysis.confidence * 100).toFixed(0)}%${
+                    analysis.confidence < 0.5
+                        ? "\n\nLow confidence. Consider using Tap Tempo to adjust."
+                        : ""
+                }`
+            );
         } catch (error) {
+            if (!isCurrentRequest()) return;
             const message =
                 error instanceof Error ? error.message : "BPM auto-detect failed.";
-            Alert.alert("Auto Detect Error", message);
+            Alert.alert(
+                "Auto Detect Error",
+                `${message}\n\nUse Tap Tempo to set BPM, then use "Here is 1" if phase correction is needed.`
+            );
         } finally {
-            setIsAnalyzing(false);
-            setAnalysisProgress(0);
+            if (isCurrentRequest()) {
+                setIsAnalyzing(false);
+                setAnalysisProgress(0);
+            }
         }
-    }, [isAnalyzing, isPro, videoItem?.id, videoItem?.uri]);
+    }, [isAnalyzing, isPro, videoItem]);
+
+    const handleCancelAutoDetect = useCallback(() => {
+        if (!isAnalyzing) return;
+        analysisRequestIdRef.current += 1;
+        setIsAnalyzing(false);
+        setAnalysisProgress(0);
+    }, [isAnalyzing]);
 
     const handleSaveBookmark = () => {
         if (isProRequired("bookmark_create") && !isPro) {
@@ -1171,6 +1437,11 @@ export default function VideoPlayerScreen() {
                                             <Pressable style={styles.phaseButton} onPress={handleSetPhase}>
                                                 <Text style={styles.phaseButtonText}>Here is 1</Text>
                                             </Pressable>
+                                            {videoItem?.bpmSource === "auto" && (
+                                                <Pressable style={styles.tempoToggleButton} onPress={handleTempoToggle}>
+                                                    <Text style={styles.tempoToggleText}>½ / ×2</Text>
+                                                </Pressable>
+                                            )}
                                         </View>
                                         <View style={styles.bpmTapRow}>
                                             <TapTempoButton onSetBpm={handleTapTempo} label="Tap Tempo" tone="dark" />
@@ -1187,16 +1458,25 @@ export default function VideoPlayerScreen() {
                                                 <>
                                                     <ActivityIndicator size="small" color="#111" />
                                                     <Text style={styles.autoDetectText}>
-                                                        Analyzing... {Math.round(analysisProgress * 100)}%
+                                                        Detecting... {Math.round(analysisProgress * 100)}%
                                                     </Text>
                                                 </>
                                             ) : (
                                                 <>
                                                     <MaterialCommunityIcons name="waveform" size={16} color="#111" />
-                                                    <Text style={styles.autoDetectText}>Auto Detect (Pro)</Text>
+                                                    <Text style={styles.autoDetectText}>Auto Detect BPM</Text>
                                                 </>
                                             )}
                                         </Pressable>
+                                        {isAnalyzing && (
+                                            <Pressable
+                                                style={styles.autoDetectCancelButton}
+                                                onPress={handleCancelAutoDetect}
+                                            >
+                                                <MaterialCommunityIcons name="close-circle-outline" size={14} color="#bbb" />
+                                                <Text style={styles.autoDetectCancelText}>Cancel</Text>
+                                            </Pressable>
+                                        )}
                                     </View>
                                 )}
 
@@ -1768,6 +2048,17 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         fontSize: 12,
     },
+    tempoToggleButton: {
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 8,
+        backgroundColor: '#111',
+    },
+    tempoToggleText: {
+        color: '#fff',
+        fontWeight: '700',
+        fontSize: 12,
+    },
     bpmTapRow: {
         alignItems: 'flex-start',
     },
@@ -1790,6 +2081,19 @@ const styles = StyleSheet.create({
         fontSize: 12,
         fontWeight: '600',
         color: '#111',
+    },
+    autoDetectCancelButton: {
+        marginTop: 4,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        alignSelf: 'flex-start',
+        paddingHorizontal: 2,
+    },
+    autoDetectCancelText: {
+        color: '#bbb',
+        fontSize: 12,
+        fontWeight: '600',
     },
     loopLengthRow: {
         flexDirection: 'row',

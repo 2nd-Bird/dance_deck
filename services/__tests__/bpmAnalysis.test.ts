@@ -1,4 +1,4 @@
-import { analyzeBPM } from "../bpmAnalysis";
+import { analyzeBPM, normalizeTempoWithPrior } from "../bpmAnalysis";
 
 function makeClickTrack(
   bpm: number,
@@ -32,5 +32,16 @@ describe("analyzeBPM", () => {
     expect(Math.abs(result.bpm - targetBpm)).toBeLessThan(5);
     expect(result.confidence).toBeGreaterThan(0.4);
     expect(result.beatTimesSec.length).toBeGreaterThan(5);
+  });
+});
+
+describe("normalizeTempoWithPrior", () => {
+  it("uses alignment + prior to pick dance-friendly tempo family", () => {
+    const result = normalizeTempoWithPrior(180, 0.8, [
+      { bpm: 90, score: 0.9 },
+      { bpm: 180, score: 0.2 },
+      { bpm: 360, score: 0 },
+    ]);
+    expect(result.normalizedBpm).toBeCloseTo(90, 1);
   });
 });

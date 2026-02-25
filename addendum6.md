@@ -1,11 +1,18 @@
 # SPEC.md
-# Dance Deck — BPM Auto Detect Repo (Addendum 6 Only)
+# Dance Deck — Addendum 6: BPM Auto Detect (Integrated)
 
 ## 0. Scope and Intent (READ FIRST)
-This repository is dedicated to implementing **Addendum 6: BPM Auto Detect (On-device estimation from local video + Beat Map) v1**.
+This document defines **Addendum 6: BPM Auto Detect (On-device estimation from local video + Beat Map) v1**.
 
-- **All other features described in the original Dance Deck specification are already implemented and are OUT OF SCOPE for this repo.**
-- Your job is to implement **only** Addendum 6 and integrate it into the existing codebase **without breaking any existing behavior**.
+- This addendum must be applied on top of `SPEC.md`.
+- Existing behavior outside this addendum remains unchanged.
+
+### 0.1 Update Declaration (Conflict Resolution)
+This addendum explicitly overrides older statements that said BPM Auto Detect is "not implemented in Phase 1 / future Pro."
+
+- The feature remains **Pro-targeted** from a product policy perspective.
+- Implementation and behavioral details are defined by this addendum.
+- Pro gating behavior follows `SPEC.md` (Addendum 5 monetization rules).
 
 ### Non-Goals (Hard Constraints)
 - Do **not** redesign UI/UX beyond what Addendum 6 explicitly requires.
@@ -86,6 +93,8 @@ bpmAuto?: {
 };
 
 bpmSource?: "manual" | "auto";
+```
+
 Rules:
 
 Existing stored data must still load correctly.
@@ -94,18 +103,15 @@ If bpmSource="auto", UI must allow user override (Tap Tempo / ±).
 
 When manual edits occur, you may switch to bpmSource="manual" (recommended) or keep "auto"—but behavior must be consistent.
 
-4. UI/UX Requirements (Only what Addendum 6 requires)
+## 4. UI/UX Requirements (Only what Addendum 6 requires)
 4.1 Entry point
 On Video Detail screen (edit mode), add “Auto Detect BPM” button.
 
 4.2 Pro gating
-This repo may not implement monetization gating itself.
+Follow `SPEC.md` Addendum 5 monetization behavior.
 
-However, the button must be designed so it can be gated externally:
-
-If Pro gating exists in this codebase, respect it.
-
-If not, implement the feature without gating, but keep the UI/action isolated so gating can be inserted later.
+- If the user is not Pro, tapping Auto Detect BPM must show the paywall/upgrade flow.
+- If the user is Pro, tapping Auto Detect BPM starts analysis.
 
 4.3 During analysis
 Async processing, no UI blocking.
@@ -128,7 +134,7 @@ Show failure message and guide to Tap Tempo.
 
 Preserve existing “This is 1” phase correction flow.
 
-5. Addendum 6: BPM Auto Detect (On-device estimation from local video + Beat Map) v1
+## 5. Addendum 6: BPM Auto Detect (On-device estimation from local video + Beat Map) v1
 Implement the following specification exactly. Do not extend scope beyond this.
 
 5.1 Purpose (Why)
@@ -290,3 +296,43 @@ Integration:
 Success → loop movement snaps to Beat Heads.
 
 Failure → clean fallback to Tap Tempo without breaking Free core behavior.
+
+5.9 Trimmer Integration Contract (Addendum 6 polish)
+Loop length presets:
+
+- `countsPerLoop` must support `4 | 8 | 16 | 32`.
+- Labels must be:
+  - `4` -> "4 counts"
+  - `8` -> "1 eight"
+  - `16` -> "2 eights"
+  - `32` -> "4 eights"
+
+Snap priority and formulas:
+
+1) Beat Map exists (`beatTimesSec.length > 0`)
+   - Candidate start snaps to nearest Beat Head index.
+   - Fixed-length range move must preserve beat count by index:
+     - `endIndex = startIndex + countsPerLoop`
+     - `end = beats[endIndex]`
+   - Handle edits (left/right) must quantize both ends to Beat Head indices and set:
+     - `beatCount = endIndex - startIndex`
+   - If the tail does not have enough beats, clamp `startIndex` so `endIndex` remains valid.
+
+2) Beat Map missing (legacy fallback)
+   - Keep existing BPM + phase grid:
+     - `gridSec = 60 / BPM`
+     - `snap(t) = phaseSec + round((t - phaseSec) / gridSec) * gridSec`
+
+Drag vs commit behavior:
+
+- During drag: keep continuous value by default.
+- Magnet behavior:
+  - if `|candidate - nearestSnap| <= snapThresholdSec`, snap immediately.
+  - otherwise continue continuous follow.
+- On release/terminate: always commit to nearest valid snap target.
+
+5.10 Auto Detect cache + cancel behavior
+- If `bpmAuto` already exists for a video, Auto Detect should reuse cached result and avoid re-analysis.
+- While analyzing, cancel is allowed.
+- Cancel must not partially update `bpm`, `bpmAuto`, or `beatTimesSec`.
+- Final state updates are allowed only when analysis completes and the request is still current.
