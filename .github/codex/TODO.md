@@ -125,45 +125,21 @@
   - Next: none
   - Verify: pnpm lint / pnpm typecheck / pnpm test / pnpm build
 
-### 追加仕様 UX-TL-SMOOTH-002: iOS写真アプリ準拠のループ範囲指定UX
+- [ ] (P0) ADD6-INTEGRATION-001 Addendum 6 統合（Beat Map保存 / Snap / ½×2 / Fallback）
+  - Status: DONE
+  - SPEC refs: addendum6.md 1, 3, 4, 5.5, 5.6
+  - Next: iOS Dev Clientで Auto Detect 成功時の Beat Map 連動と失敗時フォールバックを実機確認
+  - Verify: pnpm lint / pnpm typecheck / pnpm test / pnpm build
 
-#### 目的
-ユーザーの既知操作（iOS標準写真アプリ）を流用し、
-説明不要・低認知負荷でのループ範囲指定を実現する。
-
-#### 基本方針
-- ループ範囲指定UXは iOS標準写真アプリの動画トリム操作を強く参照する
-- 見た目・色味・操作感は「コピー可能な範囲でコピー」する
-
-#### 状態遷移
-1. 初期状態
-   - ループ範囲（黄色枠）は存在しない
-   - タイムラインは通常スケール
-
-2. 範囲指定開始
-   - 左端または右端ハンドルをドラッグした瞬間に
-     ループ範囲（黄色枠）を生成する
-
-3. 端ハンドル操作中
-   - 操作中のハンドル直上に時間表示を行う
-   - 表示形式は `mm:ss:xx`（xx = サブ秒）
-   - 時間は連続的に更新され、カクつきがあってはならない
-
-4. 精密調整モード
-   - ループ範囲（中央）を長押しすると精密調整モードに入る
-   - 精密調整モードではタイムライン表示スケールを拡大する
-     （結果として、ループ範囲が相対的に広く見える）
-   - 微小なドラッグで時間を詰められること
-
-#### 操作精度
-- ループ範囲の移動・左右端操作は
-  秒未満（サブ秒）単位で連続的に行えること
-- 「1秒単位でカクカク動く」挙動は禁止
-
-#### 視覚仕様
-- ループ範囲の色は黄色系（iOS写真アプリ準拠）
-- ハンドル形状・太さは、既存Timeline内で最も認知しやすい形状を採用
-
+- [ ] (P0) ADD6-POLISH-002 Addendum 6 動作磨き込み（drag時マグネット / BeatMap固定長 / AutoDetect cache+cancel）
+  - Status: DONE
+  - SPEC refs: addendum6.md 5.9, 5.10
+  - Next: iOS Dev Clientで以下を実機確認
+    - 4/8/16/32選択後のrange移動で拍数が崩れない
+    - drag中は連続追従しつつBeat近傍で吸着し、指離しで確定する
+    - Auto Detect中にCancelしてもBPM/BeatMapが途中保存されない
+    - 2回目以降のAuto Detectで再解析せずキャッシュ利用される
+  - Verify: pnpm lint / pnpm typecheck / pnpm test / pnpm build
 
 ### 追加仕様 UX-TL-SMOOTH-002: iOS写真アプリ準拠のループ範囲指定UX
 
@@ -203,6 +179,7 @@
 #### 視覚仕様
 - ループ範囲の色は黄色系（iOS写真アプリ準拠）
 - ハンドル形状・太さは、既存Timeline内で最も認知しやすい形状を採用
+
 
 ### P1 — Core UX (Loop / Timeline)
 - [ ] (P1) UX-TL-SMOOTH-002 iOS写真アプリ準拠のループ範囲指定UX
@@ -236,4 +213,4 @@
 ---
 
 ## Last updated
-- 2026-01-19 08:10 (by Codex)
+- 2026-02-26 08:09 (by Codex)

@@ -5,6 +5,11 @@ Beat-Synced Loop Player & Video Deck for Dancers
 
 ### 追加仕様6:BPM自動推定機能
 addendum6.md を参照。
+- トリマー統合の動作契約（Loop長プリセット/Beat Map優先Snap/Drag時マグネット/commit確定）は addendum6.md 5.9-5.10 を正とする。
+
+上書き規則（衝突回避）:
+- 追加仕様6は、過去の「BPM Auto Detect は初版未実装 / 将来対応」という記述を上書きする。
+- ただし、課金ポジション（Pro対象）は維持する。課金導線・gatingは追加仕様5に従う。
 
 ### 追加仕様5.1: 課金（RevenueCat）の実機検証環境
 
@@ -31,7 +36,7 @@ Entitlement: RevenueCatの権限名。アプリはこれだけを信頼して機
 
 Bookmark: ループ区間・BPM等を保存する“Loop Bookmark”（既存のブックマーク機能）
 
-BPM Auto Detect: 音源解析でBPMを自動推定する機能（初版では未実装、将来Pro）
+BPM Auto Detect: 音源解析でBPMを自動推定する機能（Pro対象。実装要件は addendum6.md で定義）
 
 1. 課金方針（初版）
 
@@ -41,7 +46,7 @@ Proの対象（有料化する機能）
 
 Loop Bookmarks（新規作成）
 
-BPM自動判定（BPM Auto Detect） ※初版は「Pro対象だが未実装」
+BPM自動判定（BPM Auto Detect） ※Pro対象。実装要件は addendum6.md で定義
 
 無料で提供する機能（例：InEightsのコア）
 
@@ -85,7 +90,7 @@ Bookmarkの新規作成・編集・削除は不可（Pro誘導）
 
 Bookmarkの新規作成/編集/削除が解放
 
-BPM Auto Detect（将来実装）が解放
+BPM Auto Detect が解放（実装要件は addendum6.md）
 
 4. UI上の課金導線（落ちないための要件）
 

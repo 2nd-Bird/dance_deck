@@ -189,6 +189,34 @@ function collectOnsetTimes(
   return times;
 }
 
+function computeBeatAlignmentScores(
+  onsetTimes: number[],
+  candidates: number[]
+): { bpm: number; score: number }[] {
+  if (onsetTimes.length < 2) {
+    return candidates.map((bpm) => ({ bpm, score: 0 }));
+  }
+  const anchorSec = onsetTimes[0];
+  const sampleCount = Math.min(onsetTimes.length, 256);
+
+  return candidates.map((bpm) => {
+    if (!Number.isFinite(bpm) || bpm <= 0) {
+      return { bpm, score: 0 };
+    }
+    const beatIntervalSec = 60 / bpm;
+    let totalErrorSec = 0;
+    for (let i = 0; i < sampleCount; i += 1) {
+      const timeSec = onsetTimes[i];
+      const beatUnits = (timeSec - anchorSec) / beatIntervalSec;
+      const nearestUnits = Math.round(beatUnits);
+      totalErrorSec += Math.abs(beatUnits - nearestUnits) * beatIntervalSec;
+    }
+    const averageErrorSec = totalErrorSec / sampleCount;
+    const normalizedError = clamp(averageErrorSec / (beatIntervalSec * 0.5), 0, 1);
+    return { bpm, score: 1 - normalizedError };
+  });
+}
+
 function buildBeatTimes(
   startTime: number,
   intervalSec: number,
@@ -316,14 +344,19 @@ export async function analyzeBPM(
   const rawBpm = (60 * sampleRate) / (HOP_SIZE * lag);
   const dynamic = clamp(energyStd / (energyMean + 1e-6), 0, 1);
   const confidence = clamp(peakContrast * dynamic, 0, 1);
-  const normalization = normalizeTempoWithPrior(rawBpm, confidence);
+
+  const onsetThreshold = ONSET_THRESHOLD_RATIO;
+  const onsetTimes = collectOnsetTimes(onset, sampleRate, HOP_SIZE, onsetThreshold);
+  const alignmentScores = computeBeatAlignmentScores(onsetTimes, [
+    rawBpm,
+    rawBpm / 2,
+    rawBpm * 2,
+  ]);
+  const normalization = normalizeTempoWithPrior(rawBpm, confidence, alignmentScores);
   const normalizedBpm =
     Number.isFinite(normalization.normalizedBpm) && normalization.normalizedBpm > 0
       ? normalization.normalizedBpm
       : rawBpm;
-
-  const onsetThreshold = ONSET_THRESHOLD_RATIO;
-  const onsetTimes = collectOnsetTimes(onset, sampleRate, HOP_SIZE, onsetThreshold);
   const startTime = onsetTimes.length > 0 ? onsetTimes[0] : 0;
   const beatTimesSec = buildBeatTimes(
     startTime,
