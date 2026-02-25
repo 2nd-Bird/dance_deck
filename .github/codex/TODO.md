@@ -210,7 +210,13 @@
   - Next: Expo Goでスクロール時の体感確認
   - Verify: FPS/JS frame drops をログ化（可能なら）
 
+- [ ] (P2) PERF-002 Video Detail の不要I/O削減とサムネイル生成高速化
+  - Status: DONE
+  - SPEC refs: 追加仕様2 Timeline / 追加仕様6 Addendum 6
+  - Next: iOS Dev ClientでVideo Detail初回表示時のサムネイル表示速度と操作中の引っかかり有無を確認
+  - Verify: pnpm lint / pnpm typecheck / pnpm test / pnpm build
+
 ---
 
 ## Last updated
-- 2026-02-26 08:09 (by Codex)
+- 2026-02-26 08:20 (by Codex)
